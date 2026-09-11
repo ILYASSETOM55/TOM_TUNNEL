@@ -1,11 +1,28 @@
 MYIP=$(curl -sS ipv4.icanhazip.com)
 readonly SERVER_HOST="https://raw.githubusercontent.com/ILYASSETOM55/TOM_TUNNEL/main"
 clear
-LN='[34m'
-BG='[44m'
-NC='[0m'
-GR='[32m'
-RD='[31m'
+
+# ═══════════ COULEURS ═══════════
+NC='\033[0m'        # Reset
+BOLD='\033[1m'      # Gras
+RED='\033[1;31m'    # Rouge
+GREEN='\033[1;32m'  # Vert
+YELLOW='\033[1;33m' # Jaune
+BLUE='\033[1;34m'   # Bleu
+MAGENTA='\033[1;35m'# Magenta
+CYAN='\033[1;36m'   # Cyan
+WHITE='\033[1;37m'  # Blanc
+BG_BLUE='\033[44m'  # Fond bleu
+BG_CYAN='\033[46m'  # Fond cyan
+BG_RED='\033[41m'   # Fond rouge
+BG_GREEN='\033[42m' # Fond vert
+
+# Alias pour compatibilité
+LN="$CYAN"
+BG="$BG_BLUE"
+GR="$GREEN"
+RD="$RED"
+
 domain=$(cat /etc/xray/domain)
 uptime="$(uptime -p | cut -d " " -f 2-10)"
 IPV4=$(curl -s -4 ifconfig.co)
@@ -31,79 +48,105 @@ else
 OS=$(uname -s)
 VER=$(uname -r)
 fi
+
 nginx=$( systemctl is-active nginx )
 if [[ $nginx == "active" ]]; then
-status_nginx="${GR}RUN${NC}"
+status_nginx="${BG_GREEN}${WHITE} ● ONLINE ${NC}"
 else
-status_nginx="${RD}OFF${NC}"
+status_nginx="${BG_RED}${WHITE} ● OFFLINE ${NC}"
 fi
+
 xray=$( systemctl is-active xray )
 if [[ $xray == "active" ]]; then
-status_xray="${GR}RUN${NC}"
+status_xray="${BG_GREEN}${WHITE} ● ONLINE ${NC}"
 else
-status_xray="${RD}OFF${NC}"
+status_xray="${BG_RED}${WHITE} ● OFFLINE ${NC}"
 fi
+
 ssh_ws=$( systemctl is-active ws-stunnel )
 if [[ $ssh_ws == "active" ]]; then
-status_ws="${GR}RUN${NC}"
+status_ws="${BG_GREEN}${WHITE} ● ONLINE ${NC}"
 else
-status_ws="${RD}OFF${NC}"
+status_ws="${BG_RED}${WHITE} ● OFFLINE ${NC}"
 fi
+
 clear
-echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
-echo -e "${LN}┃${NC} ${BG}                 TOM_TUNNEL                ${NC} ${LN}┃${NC}"
-echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
-echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
-echo -e "${LN}┃${NC}  OS         : $OS $VER"
-echo -e "${LN}┃${NC}  UPTIME     : $uptime"
-echo -e "${LN}┃${NC}  IPv4       : ${IPV4:-N/A}"
+
+# ═══════════ BANNER ═══════════
+echo -e "${MAGENTA}${BOLD}"
+echo -e "  ██╗ ██████╗ ███████╗██╗         ████████╗ ██████╗ ███╗   ███╗"
+echo -e "  ██║██╔═══██╗██╔════╝██║         ╚══██╔══╝██╔═══██╗████╗ ████║"
+echo -e "  ██║██║   ██║█████╗  ██║            ██║   ██║   ██║██╔████╔██║"
+echo -e "  ██║██║   ██║██╔══╝  ██║            ██║   ██║   ██║██║╚██╔╝██║"
+echo -e "  ██║╚██████╔╝███████╗███████╗       ██║   ╚██████╔╝██║ ╚═╝ ██║"
+echo -e "  ╚═╝ ╚═════╝ ╚══════╝╚══════╝       ╚═╝    ╚═════╝ ╚═╝     ╚═╝"
+echo -e "${NC}"
+
+# ═══════════ SYSTEM INFO ═══════════
+echo -e "${CYAN}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
+echo -e "${BG_BLUE}${WHITE}${BOLD}              🖥   S Y S T E M   I N F O   🖥              ${NC}"
+echo -e "${CYAN}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
+echo -e "  ${GREEN}●${NC} ${YELLOW}OS${NC}       ${MAGENTA}»${NC} ${WHITE}$OS $VER${NC}"
+echo -e "  ${GREEN}●${NC} ${YELLOW}UPTIME${NC}   ${MAGENTA}»${NC} ${WHITE}$uptime${NC}"
+echo -e "  ${GREEN}●${NC} ${YELLOW}IPv4${NC}     ${MAGENTA}»${NC} ${WHITE}${IPV4:-N/A}${NC}"
 if [ -n "$IPV6" ]; then
-echo -e "${LN}┃${NC}  IPv6       : $IPV6"
+echo -e "  ${GREEN}●${NC} ${YELLOW}IPv6${NC}     ${MAGENTA}»${NC} ${WHITE}$IPV6${NC}"
 fi
-echo -e "${LN}┃${NC}  DOMAIN     : $domain"
-echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
-echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
-echo -e "${LN}┃${NC}   NGINX : [${status_nginx}]    XRAY : [${status_xray}]    WS : [${status_ws}]"
-echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
-echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
-echo -e "${LN}┃${NC} ${BG}                       MENU                     ${NC} ${LN}┃${NC}"
-echo -e "${LN}┃${NC}"
-echo -e "${LN}┃${NC} [01] • SSH/WS MENU        [04] • TROJAN MENU"
-echo -e "${LN}┃${NC} [02] • VMESS MENU         [05] • SOCKS MENU"
-echo -e "${LN}┃${NC} [03] • VLESS MENU         [06] • ZIVPN MENU"
-echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
-echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
-echo -e "${LN}┃${NC} ${BG}                      TOOLS                     ${NC} ${LN}┃${NC}"
-echo -e "${LN}┃${NC}"
-echo -e "${LN}┃${NC} [07] • DNS PANEL          [11] • NETGUARD PANEL"
-echo -e "${LN}┃${NC} [08] • DOMAIN PANEL       [12] • VPN PORT INFO"
-echo -e "${LN}┃${NC} [09] • IPV6 PANEL         [13] • CLEAN VPS LOGS"
-echo -e "${LN}┃${NC} [10] • VPS STATUS         [14] • TOM_TUNNEL BOT PANEL"
-echo -e "${LN}┃${NC} [15] • UNINSTALL TOM_TUNNEL    [16] • FAST DNS MENU"
-echo -e "${LN}┃${NC}"
-echo -e "${LN}┃${NC} [00] • EXIT               [88] • REBOOT VPS"
-echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
-echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
-echo -e "${LN}┃${NC} ${BG}                   WEB PANEL                    ${NC} ${LN}┃${NC}"
-echo -e "${LN}┃${NC}"
-echo -e "${LN}┃${NC} [18] • TOM_TUNNEL WEB"
-echo -e "${LN}┃${NC}"
-echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
+echo -e "  ${GREEN}●${NC} ${YELLOW}DOMAIN${NC}   ${MAGENTA}»${NC} ${WHITE}$domain${NC}"
+echo -e "${CYAN}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
+
+# ═══════════ SERVICES STATUS ═══════════
+echo -e "${BG_BLUE}${WHITE}${BOLD}            📡   S E R V I C E S   S T A T U S   📡          ${NC}"
+echo -e "${CYAN}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
+echo -e "  ${YELLOW}NGINX${NC}        ${MAGENTA}»${NC} [${status_nginx}${NC}]"
+echo -e "  ${YELLOW}XRAY${NC}         ${MAGENTA}»${NC} [${status_xray}${NC}]"
+echo -e "  ${YELLOW}WS-STUNNEL${NC}  ${MAGENTA}»${NC} [${status_ws}${NC}]"
+echo -e "${CYAN}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
+
+# ═══════════ MENU ═══════════
+echo -e "${BG_CYAN}\033[30m${BOLD}                 📶   M  E  N  U   📶                    ${NC}"
+echo -e "${CYAN}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
+echo -e "   ${GREEN}[01]${NC} ${WHITE}• SSH/WS MENU${NC}        ${GREEN}[04]${NC} ${WHITE}• TROJAN MENU${NC}"
+echo -e "   ${GREEN}[02]${NC} ${WHITE}• VMESS MENU${NC}         ${GREEN}[05]${NC} ${WHITE}• SOCKS MENU${NC}"
+echo -e "   ${GREEN}[03]${NC} ${WHITE}• VLESS MENU${NC}         ${GREEN}[06]${NC} ${WHITE}• ZIVPN MENU${NC}"
+echo -e "${CYAN}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
+
+# ═══════════ TOOLS ═══════════
+echo -e "${BG_CYAN}\033[30m${BOLD}                   🛠   T O O L S   🛠                      ${NC}"
+echo -e "${CYAN}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
+echo -e "   ${GREEN}[07]${NC} ${WHITE}• DNS PANEL${NC}          ${GREEN}[11]${NC} ${WHITE}• NETGUARD PANEL${NC}"
+echo -e "   ${GREEN}[08]${NC} ${WHITE}• DOMAIN PANEL${NC}       ${GREEN}[12]${NC} ${WHITE}• VPN PORT INFO${NC}"
+echo -e "   ${GREEN}[09]${NC} ${WHITE}• IPV6 PANEL${NC}         ${GREEN}[13]${NC} ${WHITE}• CLEAN VPS LOGS${NC}"
+echo -e "   ${GREEN}[10]${NC} ${WHITE}• VPS STATUS${NC}         ${GREEN}[14]${NC} ${WHITE}• TOM_TUNNEL BOT${NC}"
+echo -e "   ${GREEN}[15]${NC} ${WHITE}• UNINSTALL TOM_TUNNEL${NC}"
+echo -e "   ${GREEN}[16]${NC} ${WHITE}• FAST DNS MENU${NC}"
+echo -e "   ${GREEN}[00]${NC} ${WHITE}• EXIT${NC}               ${GREEN}[88]${NC} ${WHITE}• REBOOT VPS${NC}"
+echo -e "${CYAN}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
+
+# ═══════════ WEB PANEL ═══════════
+echo -e "${BG_CYAN}\033[30m${BOLD}              🌐   W E B   P A N E L   🌐                  ${NC}"
+echo -e "${CYAN}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
+echo -e "   ${GREEN}[18]${NC} ${WHITE}• TOM_TUNNEL WEB${NC}"
+echo -e "${CYAN}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
+
+# ═══════════ UPDATE ═══════════
 if [ "$UPDATE_AVAILABLE" -eq 1 ]; then
-echo -e "${RD}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
-echo -e "${RD}┃${NC} ${RD}[99] • UPDATE SCRIPT (v$LATEST_VERSION)${NC}"
-echo -e "${RD}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
+echo -e "${RED}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
+echo -e "${BG_RED}${WHITE}${BOLD}      ⚠  [99] • UPDATE SCRIPT AVAILABLE (v$LATEST_VERSION)   ${NC}"
+echo -e "${RED}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
 fi
+
+# ═══════════ FOOTER ═══════════
 VERSION=$(cat /etc/version)
-echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
-echo -e "${LN}┃${NC} • VERSION      : ${VERSION}"
-echo -e "${LN}┃${NC} • SCRIPT BY    : JOELTOM TEAM"
-echo -e "${LN}┃${NC} • CONTACT INFO : +237 654 14 55 40"
-echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
-echo -e "${LN}●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━●${NC}"
-echo -e   ""
-read -p " Select menu :  "  opt
-echo -e   ""
+echo -e "${MAGENTA}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
+echo -e "  ${GREEN}●${NC} ${YELLOW}VERSION${NC}      ${MAGENTA}»${NC} ${WHITE}${VERSION}${NC}"
+echo -e "  ${GREEN}●${NC} ${YELLOW}SCRIPT BY${NC}    ${MAGENTA}»${NC} ${CYAN}${BOLD}JOELTOM TEAM${NC}"
+echo -e "  ${GREEN}●${NC} ${YELLOW}CONTACT INFO${NC} ${MAGENTA}»${NC} ${WHITE}+237 654 14 55 40${NC}"
+echo -e "${MAGENTA}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
+echo -e ""
+read -p " Select menu :  " opt
+echo -e ""
+
 case $opt in
 1 | 01) clear ; ssh ;;
 2 | 02) clear ; vmess ;;
