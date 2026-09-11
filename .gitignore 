@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+tom_tunnel-web/node_modules/
+tom_tunnel-web/dist/
+tom_tunnel-web/frontend/node_modules/
+tom_tunnel-web/frontend/dist/
