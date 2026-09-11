@@ -5,17 +5,17 @@ BLUE='[34m'
 NC='[0m'
 export SERVER_HOST="https://raw.githubusercontent.com/ILYASSETOM55/TOM_TUNNEL/main"
 update_system() {
-echo -e "${BLUE}Updating server...${NC}"
+echo -e "${MAGENTA}Updating server...${NC}"
 sudo apt-get update && sudo apt-get upgrade -y
 }
 stop_service() {
-echo -e "${BLUE}Stopping existing ZIVPN service...${NC}"
+echo -e "${MAGENTA}Stopping existing ZIVPN service...${NC}"
 if systemctl is-active --quiet zivpn.service; then
 systemctl stop zivpn.service
 fi
 }
 download_udp_service() {
-echo -e "${BLUE}Downloading ZIVPN UDP service...${NC}"
+echo -e "${MAGENTA}Downloading ZIVPN UDP service...${NC}"
 wget -q https://github.com/zahidbd2/udp-zivpn/releases/download/udp-zivpn_1.4.9/udp-zivpn-linux-amd64 -O /usr/local/bin/zivpn
 chmod +x /usr/local/bin/zivpn
 mkdir -p /etc/zivpn
@@ -23,7 +23,7 @@ touch /etc/zivpn/user.db
 wget -q -O /etc/zivpn/config.json "${SERVER_HOST}/module/zvpn.json"
 }
 generate_certificates() {
-echo -e "${BLUE}Generating certificate files...${NC}"
+echo -e "${MAGENTA}Generating certificate files...${NC}"
 openssl req -new -newkey rsa:4096 -days 365 -nodes -x509 \
 -subj "/C=US/ST=California/L=Los Angeles/O=Example Corp/OU=IT Department/CN=zivpn" \
 -keyout "/etc/zivpn/zivpn.key" -out "/etc/zivpn/zivpn.crt"
@@ -31,7 +31,7 @@ sysctl -w net.core.rmem_max=16777216 &> /dev/null
 sysctl -w net.core.wmem_max=16777216 &> /dev/null
 }
 create_systemd_service() {
-echo -e "${BLUE}Creating systemd service...${NC}"
+echo -e "${MAGENTA}Creating systemd service...${NC}"
 cat <<EOF > /etc/systemd/system/zivpn.service
 [Unit]
 Description=ZIVPN UDP VPN Server
@@ -52,7 +52,7 @@ WantedBy=multi-user.target
 EOF
 }
 enable_and_start_service() {
-echo -e "${BLUE}Enabling and starting ZIVPN service...${NC}"
+echo -e "${MAGENTA}Enabling and starting ZIVPN service...${NC}"
 systemctl daemon-reload
 systemctl enable zivpn.service
 systemctl start zivpn.service
