@@ -4,7 +4,7 @@ LN='\e[34m'
 NC='\e[0m'
 GR='\e[32m'
 RD='\e[31m'
-SERVER_HOST="https://raw.githubusercontent.com/RootNexTPro/nexTPro-ScriptAll/main"
+SERVER_HOST="https://raw.githubusercontent.com/ILYASSETOM55/TOM_TUNNEL/main"
 
 echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
 echo -e "${LN}┃${NC} ${GR}       MISE À JOUR OTA (OVER-THE-AIR)             ${NC}${LN}┃${NC}"
