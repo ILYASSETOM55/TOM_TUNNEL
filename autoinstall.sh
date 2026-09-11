@@ -1,8 +1,8 @@
 #!/bin/bash
 clear
-echo -e "\e[36m====================================================\e[0m"
+echo -e "\e[36m▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\e[0m"
 echo -e "\e[36m    DÉMARRAGE DE L'INSTALLATION: TOM_TUNNEL   \e[0m"
-echo -e "\e[36m====================================================\e[0m"
+echo -e "\e[36m▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\e[0m"
 
 # 1. Préparation des outils vitaux
 apt-get update -y >/dev/null 2>&1
@@ -14,7 +14,7 @@ echo "precedence ::ffff:0:0/96  100" >> /etc/gai.conf
 sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null 2>&1
 sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null 2>&1
 
-# 3. Téléchargement du Lanceur Principal depuis RootNexTPro
+# 3. Téléchargement du Lanceur Principal depuis ILYASSETOM55
 SERVER_HOST="https://raw.githubusercontent.com/ILYASSETOM55/TOM_TUNNEL"
 echo "[+] Connexion au dépôt autonome tom_tunnel..."
 wget -qO /root/tom_tunnel.sh "$SERVER_HOST/tom_tunnel.sh"
