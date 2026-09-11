@@ -97,8 +97,8 @@ fi
 VERSION=$(cat /etc/version)
 echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
 echo -e "${LN}┃${NC} • VERSION      : ${VERSION}"
-echo -e "${LN}┃${NC} • SCRIPT BY    : TOM_TUNNEL TEAM"
-echo -e "${LN}┃${NC} • CONTACT INFO : +237 659 620 977"
+echo -e "${LN}┃${NC} • SCRIPT BY    : JOELTOM TEAM"
+echo -e "${LN}┃${NC} • CONTACT INFO : +237 654 14 55 40"
 echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
 echo -e "${LN}●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━●${NC}"
 echo -e   ""
