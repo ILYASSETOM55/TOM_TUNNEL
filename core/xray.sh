@@ -1,5 +1,5 @@
 clear
-export SERVER_HOST="https://raw.githubusercontent.com/RootNexTPro/nexTPro-ScriptAll/main"
+export SERVER_HOST="https://raw.githubusercontent.com/ILYASSETOM55/TOM_TUNNEL/main"
 export DEBIAN_FRONTEND=noninteractive
 log() { printf "%b
 " "[INFO] $*"; }
