@@ -1,6 +1,6 @@
 clear
 export DEBIAN_FRONTEND=noninteractive
-export SERVER_HOST="https://raw.githubusercontent.com/RootNexTPro/nexTPro-ScriptAll/main"
+export SERVER_HOST="https://raw.githubusercontent.com/ILYASSETOM55/TOM_TUNNEL/main"
 setup_variables() {
 MYIP=$(wget -qO- ipv4.icanhazip.com)
 NET=$(ip -o -4 route show to default | awk '{print $5}')
