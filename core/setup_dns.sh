@@ -40,28 +40,41 @@ chmod +x /etc/slowdns/dns-server
 -privkey-file /etc/slowdns/server.key \
 -pubkey-file /etc/slowdns/server.pub
 clear
-echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
-echo -e "${LN}┃${NC} ${BG}                 DOMAIN PANEL                   ${NC} ${LN}┃${NC}"
-echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
-echo -e "${LN}●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━●${NC}"
+echo -e "\( {LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ \){NC}"
+echo -e "\( {LN}┃ \){NC} ${BG}           ◆ DOMAIN PANEL ◆                     ${NC} \( {LN}┃ \){NC}"
+echo -e "\( {LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ \){NC}"
+echo -e "\( {LN}●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━● \){NC}"
 echo
+echo -e "  \( {CY}► \){NC} \( {WH}Configure SlowDNS Nameserver \){NC}"
+echo
+
 while true; do
-read -rp "  NS Domain : " -e Nameserver
-if [[ -z "$Nameserver" ]]; then
-echo -e "${RED}NS Domain cannot be empty. Please enter a value.${NC}"
-else
-break
-fi
+    echo -ne "  \( {YL}[ NS DOMAIN ] \){NC} \( {GN}› \){NC} "
+    read -e Nameserver
+    if [[ -z "$Nameserver" ]]; then
+        echo -e "  \( {RD}✖ ERROR : NS Domain cannot be empty ! \){NC}"
+        echo
+    else
+        break
+    fi
 done
+
+echo
+echo -e "  \( {GN}✔ Saving domain... \){NC}"
 echo "$Nameserver" > /etc/slowdns/nsdomain
+
+echo -e "  \( {GN}✔ Stopping old services... \){NC}"
 systemctl stop dnstt 2>/dev/null || true
 pkill dns-server 2>/dev/null || true
 rm -f /etc/systemd/system/dnstt.service
+
+echo -e "  \( {GN}✔ Creating new service unit... \){NC}"
 cat >/etc/systemd/system/dnstt.service <<END
 [Unit]
-Description=SlowDNS Service
-Documentation=https://google.com
+Description=SlowDNS Cyber-Matrix Service
+Documentation=https://thes.mrtomtech.site
 After=network.target nss-lookup.target
+
 [Service]
 Type=simple
 User=root
@@ -70,6 +83,7 @@ AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
 NoNewPrivileges=true
 ExecStart=/etc/slowdns/dns-server -udp :5300 -privkey-file /etc/slowdns/server.key $Nameserver 127.0.0.1:22
 Restart=on-failure
+
 [Install]
 WantedBy=multi-user.target
 END
