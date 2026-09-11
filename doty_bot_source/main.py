@@ -10,10 +10,10 @@ from datetime import datetime, timedelta
 from modules import system_core, ssh_core, admin_core, xray_core, zivpn_core
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s %(levelname)s %(message)s')
-CONFIG_FILE    = '/etc/the_s_bot/config.json'
-RESELLERS_FILE = '/etc/the_s_bot/resellers.json'
-CONVS_FILE     = '/etc/the_s_bot/convs.json'
-VISITORS_FILE  = '/etc/the_s_bot/visitors.json'
+CONFIG_FILE    = '/etc/tom_tunnel_bot/config.json'
+RESELLERS_FILE = '/etc/tom_tunnel-bot/resellers.json'
+CONVS_FILE     = '/etc/tom_tunnel_bot/convs.json'
+VISITORS_FILE  = '/etc/tom_tunnel_bot/visitors.json'
 MENU_IMAGE_URL = "https://github.com/ppstech237/pps-tg-bot/blob/main/pps.jpg?raw=true"
 
 def load_config():
@@ -25,7 +25,7 @@ if not config: exit(1)
 
 bot         = telebot.TeleBot(config.get('bot_token'))
 SUPER_ADMIN = int(config.get('super_admin'))
-BRAND       = config.get('brand', 'THE_S BOT')
+BRAND       = config.get('brand', 'TOM_TUNNEL BOT')
 
 #‎▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
 #  VALIDATION
