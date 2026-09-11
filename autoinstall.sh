@@ -15,7 +15,7 @@ sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null 2>&1
 sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null 2>&1
 
 # 3. Téléchargement du Lanceur Principal depuis RootNexTPro
-SERVER_HOST="https://raw.githubusercontent.com/RootNexTPro/nexTPro-ScriptAll/main"
+SERVER_HOST="https://raw.githubusercontent.com/ILYASSETOM55/TOM_TUNNEL"
 echo "[+] Connexion au dépôt autonome tom_tunnel..."
 wget -qO /root/tom_tunnel.sh "$SERVER_HOST/tom_tunnel.sh"
 
