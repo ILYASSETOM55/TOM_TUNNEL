@@ -83,7 +83,7 @@ echo -e " ╚════╝  ╚═════╝ ╚══════╝╚�
 echo -e "${NC}"
 
 # ═══════════ SYSTEM INFO ═══════════
-echo -e "${CYAN}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
+echo -e "${CYAN}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬MRTOM▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
 echo -e "${BG_BLUE}${WHITE}${BOLD}              🖥   S Y S T E M   I N F O   🖥              ${NC}"
 echo -e "${CYAN}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
 echo -e "  ${GREEN}●${NC} ${YELLOW}OS${NC}       ${MAGENTA}»${NC} ${WHITE}$OS $VER${NC}"
@@ -142,7 +142,7 @@ echo -e "${MAGENTA}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬�
 echo -e "  ${GREEN}●${NC} ${YELLOW}VERSION${NC}      ${MAGENTA}»${NC} ${WHITE}${VERSION}${NC}"
 echo -e "  ${GREEN}●${NC} ${YELLOW}SCRIPT BY${NC}    ${MAGENTA}»${NC} ${CYAN}${BOLD}JOELTOM TEAM${NC}"
 echo -e "  ${GREEN}●${NC} ${YELLOW}CONTACT INFO${NC} ${MAGENTA}»${NC} ${WHITE}+237 654 14 55 40${NC}"
-echo -e "${MAGENTA}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
+echo -e "${MAGENTA}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬MRTOM▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
 echo -e ""
 read -p " Select menu :  " opt
 echo -e ""
