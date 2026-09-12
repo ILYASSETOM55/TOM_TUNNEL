@@ -62,10 +62,18 @@ This script is provided free of charge and may be used without a license or doma
 - 12 ⚠️ Partial (⚠️ SSH not working)
 
 ## Installation
- 
+
+🚀 Installation automatique
+
 <pre>
-<code>wget -O /root/tom_tunnel.sh https://raw.githubusercontent.com/RootNexTPro/nexTPro-ScriptAll/main/tom_tunnel.sh && chmod +x /root/tom_tunnel.sh && bash /root/tom_tunnel.sh</code>
-</pre>
+<code>wget -O /root/tom_tunnel.sh https://raw.githubusercontent.com/ILYASSETOM55/TOM_TUNNEL/main/tom_tunnel.sh &amp;&amp; chmod +x /root/tom_tunnel.sh &amp;&amp; bash /root/tom_tunnel.sh</code>
+</pre>⚡ Installation rapide
+
+wget -qO- https://raw.githubusercontent.com/ILYASSETOM55/TOM_TUNNEL/main/tom_tunnel.sh | bash
+
+Après l'installation, utilisez la commande suivante pour ouvrir le menu :
+
+menu
 
 ## TOM_TUNNEL Web Panel
 
