@@ -78,18 +78,18 @@ def _build_links(protocol, user, client_id, domain):
 def _format_details(protocol, user, client_id, exp_date, domain):
     link_tls, link_ntls, link_grpc = _build_links(protocol, user, client_id, domain)
     return (
-        f"┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n"
+        f"▬▬▬▬▬▬▬▬▬▬MRTOM▬▬▬▬▬▬▬▬▬\n"
         f"┃ <b>{protocol.upper()} ACCOUNT DETAILS</b>\n"
-        f"┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n"
+        f"▬▬▬▬▬▬▬▬▬▬MRTOM▬▬▬▬▬▬▬▬▬\n"
         f"👤 <b>Username:</b> <code>{user}</code>\n"
         f"⏳ <b>Expired:</b> <code>{exp_date}</code>\n"
         f"🔑 <b>UUID/Pass:</b> <code>{client_id}</code>\n"
         f"🌐 <b>Domain:</b> <code>{domain}</code>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
         f"🔗 <b>TLS (443):</b>\n<code>{link_tls}</code>\n\n"
         f"🔗 <b>NTLS (80):</b>\n<code>{link_ntls}</code>\n\n"
         f"🔗 <b>GRPC (443):</b>\n<code>{link_grpc}</code>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        f"▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"
     )
 
 
