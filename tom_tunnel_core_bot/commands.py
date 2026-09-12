@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Commandes du Bot Telegram Nexus
+Commandes du Bot Telegram Tom_tunnel
 Gestion de toutes les commandes disponibles pour l'administrateur
 """
 
