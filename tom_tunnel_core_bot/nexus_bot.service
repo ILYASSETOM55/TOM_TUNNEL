@@ -1,0 +1,14 @@
+[Unit]
+Description=THE_S_NET TUNNEL 
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/etc/nexus_bot
+ExecStart=/usr/bin/python3 /etc/nexus_bot/nexus_bot.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
