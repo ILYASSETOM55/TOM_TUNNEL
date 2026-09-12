@@ -2,7 +2,7 @@
   "bot_token": "VOTRE_TOKEN_BOT_TELEGRAM_ICI",
   "super_admin": 123456789,
   "admins": [],
-  "database": "/etc/nexus_bot/users.db",
+  "database": "/etc/tom_bot/users.db",
   "log_level": "INFO",
   "poll_timeout": 30
 }
