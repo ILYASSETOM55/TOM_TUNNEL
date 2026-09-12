@@ -1,0 +1,20 @@
+[Unit]
+Description=Nexus Tunnel Web Panel
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/nexus-tunnel-web
+ExecStart=/usr/bin/node /opt/nexus-tunnel-web/dist/server/index.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=NEXUS_CONFIG=/etc/nexus-tunnel-web/config.json
+Environment=NEXUS_DB_DIR=/etc/nexus-tunnel-web
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
