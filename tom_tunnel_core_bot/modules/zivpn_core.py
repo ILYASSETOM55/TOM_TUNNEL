@@ -73,15 +73,15 @@ def create_zivpn_account(user, password, days, created_by_id=None):
     ).strip()
 
     msg = (
-        f"┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n"
+        f"▬▬▬▬▬▬▬▬▬▬MRTOM▬▬▬▬▬▬▬▬▬\n"
         f"┃ <b>ZIVPN ACCOUNT DETAILS</b>\n"
-        f"┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n"
+        f"▬▬▬▬▬▬▬▬▬▬MRTOM▬▬▬▬▬▬▬▬▬\n"
         f"👤 <b>Username:</b> <code>{user}</code>\n"
         f"🔑 <b>Password:</b> <code>{password}</code>\n"
         f"⏳ <b>Expiry Date:</b> {exp_date}\n"
         f"🖥️ <b>IPV4:</b> <code>{myip}</code>\n"
         f"🌐 <b>Domain:</b> <code>{domain}</code>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        f"▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"
     )
     return True, msg
 
@@ -111,15 +111,15 @@ def get_zivpn_account_details(user):
         "wget -qO- ipv4.icanhazip.com 2>/dev/null || curl -s ipv4.icanhazip.com"
     ).strip()
     msg = (
-        f"┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n"
+        f"▬▬▬▬▬▬▬▬▬▬MRTOM▬▬▬▬▬▬▬▬▬\n"
         f"┃ <b>ZIVPN ACCOUNT DETAILS</b>\n"
-        f"┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n"
+        f"▬▬▬▬▬▬▬▬▬▬MRTOM▬▬▬▬▬▬▬▬▬\n"
         f"👤 <b>Username:</b> <code>{user}</code>\n"
         f"🔑 <b>Password:</b> <code>{data.get('password', 'N/A')}</code>\n"
         f"⏳ <b>Expiry Date:</b> {data.get('expiry', 'N/A')}\n"
         f"🖥️ <b>IPV4:</b> <code>{myip}</code>\n"
         f"🌐 <b>Domain:</b> <code>{domain}</code>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        f"▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"
     )
     return True, msg
 
