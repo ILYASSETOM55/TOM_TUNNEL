@@ -14,7 +14,7 @@ def get_vps_status():
         disk = psutil.disk_usage('/')
         
         status_msg = (
-            f"📊 <b>ÉTAT DU SERVEUR NEXUS</b>\n\n"
+            f"📊 <b>ÉTAT DU SERVEUR TOM</b>\n\n"
             f"🖥️ <b>OS:</b> <code>{os_info}</code>\n"
             f"⏱️ <b>Uptime:</b> <code>{uptime}</code>\n"
             f"⚙️ <b>CPU:</b> <code>{cpu_usage}%</code>\n"
