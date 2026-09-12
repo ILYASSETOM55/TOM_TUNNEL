@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Logger pour le Bot Telegram Nexus
+Logger pour le Bot Telegram Tom_tunnel
 Gestion des logs et du monitoring
 """
 
@@ -8,7 +8,7 @@ import logging
 import os
 from datetime import datetime
 
-def setup_logger(name, log_file='/var/log/nexus_bot/bot.log'):
+def setup_logger(name, log_file='/var/log/tom_bot/bot.log'):
     """Configurer le logger"""
     
     # Créer le répertoire s'il n'existe pas
