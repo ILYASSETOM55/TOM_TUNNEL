@@ -1,5 +1,5 @@
 clear
-export SERVER_HOST="https://raw.githubusercontent.com/RootNexTPro/nexTPro-ScriptAll/main"
+export SERVER_HOST="https://raw.githubusercontent.com/ILYASSETOM55/TOM_TUNNEL/main"
 export UDP_DIR="/etc/udp-custom"
 export SERVICE_FILE="/etc/systemd/system/udp-custom.service"
 update_system() {
