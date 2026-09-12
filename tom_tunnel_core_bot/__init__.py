@@ -1,6 +1,6 @@
-# Nexus Bot - Telegram C2 Control
+# Tom_tunnel Bot - Telegram C2 Control
 __version__ = "1.0.0"
-__author__ = "THE_S Team"
+__author__ = "TOM Team"
 
 import os
 import sys
