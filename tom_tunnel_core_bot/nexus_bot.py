@@ -29,12 +29,12 @@ def is_admin(user_id):
 def main_menu_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
-        InlineKeyboardButton("🔑 SSH/WS", callback_data="menu_ssh"),
-        InlineKeyboardButton("🔰 VMESS", callback_data="menu_vmess"),
-        InlineKeyboardButton("🔰 VLESS", callback_data="menu_vless"),
-        InlineKeyboardButton("🔰 TROJAN", callback_data="menu_trojan"),
+        InlineKeyboardButton("🗽 SSH/WS", callback_data="menu_ssh"),
+        InlineKeyboardButton("🗽 VMESS", callback_data="menu_vmess"),
+        InlineKeyboardButton("🗽 VLESS", callback_data="menu_vless"),
+        InlineKeyboardButton("🗽 TROJAN", callback_data="menu_trojan"),
         InlineKeyboardButton("🔌 SOCKS", callback_data="menu_socks"),
-        InlineKeyboardButton("📱 ZIVPN", callback_data="menu_zivpn"),
+        InlineKeyboardButton("📡 ZIVPN", callback_data="menu_zivpn"),
         InlineKeyboardButton("📊 VPS STATUS", callback_data="menu_status"),
         InlineKeyboardButton("🧹 CLEAN LOGS", callback_data="menu_log"),
         InlineKeyboardButton("👑 ADMINS", callback_data="menu_admins"),
@@ -95,7 +95,7 @@ def home_callback(call):
     bot.send_photo(
         call.message.chat.id,
         MENU_IMAGE_URL,
-        caption="<b>🟢 THE_S TUNNEL PRO - C2 SERVER</b>\nSélectionnez un module :",
+        caption="<b>🟢 TOM TUNNEL  - C2 SERVER</b>\nSélectionnez un module :",
         parse_mode="HTML",
         reply_markup=main_menu_keyboard()
     )
@@ -109,9 +109,9 @@ def protocol_submenu(call):
     proto = call.data.split("_", 1)[1]
     _show_submenu(call, f"<b>Module {proto.upper()}</b>\nChoisissez une action :", protocol_menu_keyboard(proto))
 
-# ═══════════════════════════════════════════════════════════
+# ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
 # SSH — CRÉATION
-# ═══════════════════════════════════════════════════════════
+# ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
 @bot.callback_query_handler(func=lambda call: call.data == "add_ssh")
 def add_ssh_start(call):
     if not is_admin(call.from_user.id): return
@@ -217,9 +217,9 @@ def view_ssh_account(call):
     )
     _show_submenu(call, details, markup)
 
-# ═══════════════════════════════════════════════════════════
+# ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
 # XRAY — MACHINE À ÉTATS COMMUNE (VLESS / VMESS / TROJAN / SOCKS)
-# ═══════════════════════════════════════════════════════════
+# ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
 @bot.callback_query_handler(func=lambda call: call.data in ("add_vless", "add_vmess", "add_trojan", "add_socks"))
 def add_xray_start(call):
     if not is_admin(call.from_user.id): return
@@ -308,9 +308,9 @@ def view_xray_account(call):
     )
     _show_submenu(call, details, markup)
 
-# ═══════════════════════════════════════════════════════════
+# ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
 # ZIVPN — CRÉATION
-# ═══════════════════════════════════════════════════════════
+# ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
 @bot.callback_query_handler(func=lambda call: call.data == "add_zivpn")
 def add_zivpn_start(call):
     if not is_admin(call.from_user.id): return
@@ -398,9 +398,9 @@ def view_zivpn_account(call):
     )
     _show_submenu(call, details, markup)
 
-# ═══════════════════════════════════════════════════════════
+# ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
 # SYSTÈME
-# ═══════════════════════════════════════════════════════════
+# ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
 @bot.callback_query_handler(func=lambda call: call.data == "menu_status")
 def handle_status(call):
     if not is_admin(call.from_user.id): return
@@ -423,9 +423,9 @@ def handle_reboot(call):
     import subprocess
     subprocess.run("reboot", shell=True)
 
-# ═══════════════════════════════════════════════════════════
+# ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
 # GESTION DES ADMINISTRATEURS
-# ═══════════════════════════════════════════════════════════
+# ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
 @bot.callback_query_handler(func=lambda call: call.data == "menu_admins")
 def handle_menu_admins(call):
     if not is_admin(call.from_user.id): return
