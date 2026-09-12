@@ -1,4 +1,4 @@
-with open("nexus_bot.py", "r") as f:
+with open("tom_bot.py", "r") as f:
     content = f.read()
 
 ssh_logic = """
