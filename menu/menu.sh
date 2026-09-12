@@ -1,3 +1,5 @@
+#!/bin/bash
+
 MYIP=$(curl -sS ipv4.icanhazip.com)
 readonly SERVER_HOST="https://raw.githubusercontent.com/ILYASSETOM55/TOM_TUNNEL/main"
 clear
@@ -32,9 +34,7 @@ INSTALLED_VERSION=$(cat "$VERSION_FILE" 2>/dev/null || echo "0.0")
 LATEST_VERSION=$(curl -sS "$SERVER_HOST/version" || echo "$INSTALLED_VERSION")
 UPDATE_AVAILABLE=0
 version_greater() {
-[ "$(printf '%s
-%s
-' "$1" "$2" | sort -V | tail -n1)" = "$1" ] && [ "$1" != "$2" ]
+[ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n1)" = "$1" ] && [ "$1" != "$2" ]
 }
 if version_greater "$LATEST_VERSION" "$INSTALLED_VERSION"; then
 UPDATE_AVAILABLE=1
@@ -136,6 +136,12 @@ echo -e "${BG_RED}${WHITE}${BOLD}      ⚠  [99] • UPDATE SCRIPT AVAILABLE (v$
 echo -e "${RED}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
 fi
 
+# ═══════════ TOM_TUNNEL UPDATE ═══════════
+echo -e "${BG_GREEN}${WHITE}${BOLD}        🔄   T O M _ T U N N E L   U P D A T E   🔄        ${NC}"
+echo -e "${CYAN}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
+echo -e "   ${GREEN}[89]${NC} ${WHITE}• TOM_TUNNEL UPDATE${NC}"
+echo -e "${CYAN}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
+
 # ═══════════ FOOTER ═══════════
 VERSION=$(cat /etc/version)
 echo -e "${MAGENTA}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
@@ -166,6 +172,7 @@ case $opt in
 16) clear ; fastdns ;;
 18) clear ; web ;;
 88) reboot ;;
+89) clear ; tomtunnel-update ;;
 99) clear ; update ;;
 0 | 00) exit ;;
 *) clear ; menu ;;
