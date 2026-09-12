@@ -1,0 +1,20 @@
+[Unit]
+Description=TOM_TUNNEL Web Panel
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/tom_tunnel-tunnel-web
+ExecStart=/usr/bin/node /opt/tom_tunnel-tunnel-web/dist/server/index.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=TOM_TUNNEL_CONFIG=/etc/tom_tunnel-tunnel-web/config.json
+Environment=TOM_TUNNEL_DB_DIR=/etc/tom_tunnel-tunnel-web
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
