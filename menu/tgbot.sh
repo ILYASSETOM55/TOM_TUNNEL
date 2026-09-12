@@ -25,7 +25,7 @@ apt-get install -y python3 python3-pip git >/dev/null 2>&1
 pip3 install pyTelegramBotAPI psutil >/dev/null 2>&1
 
 echo -e "${GR}[+] Création sécurisée de la base de données...${NC}"
-mkdir -p /etc/tom_tunnel_bot
+mkdir -p /etc/nexus_bot
 cat <<JSON > /etc/tom_tunnel_bot/config.json
 {
   "bot_token": "$bot_token",
@@ -44,16 +44,16 @@ rm -rf repo_temp
 
 echo -e "${GR}[+] Configuration et alignement du Démon système...${NC}"
 # On force l'écriture d'un service parfait avec les bons chemins
-cat << 'SRV' > /etc/systemd/system/tom_tunnel_bot.service
+cat << 'SRV' > /etc/systemd/system/nexus_bot.service
 [Unit]
-Description=tom_tunnel Bot Telegram C2
+Description=Tom_tunnel Bot Telegram C2
 After=network.target
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/etc/tom_tunnel_bot
-ExecStart=/usr/bin/python3 /etc/tom_tunnel_bot/tom_tunnel_bot.py
+ExecStart=/usr/bin/python3 /etc/tom_tunnel_bot/nexus_bot.py
 Restart=always
 RestartSec=3
 
@@ -70,3 +70,4 @@ echo -e " Allez sur Telegram et tapez /start"
 echo -e "\n Appuyez sur ENTRÉE pour retourner au menu."
 read
 menu
+
