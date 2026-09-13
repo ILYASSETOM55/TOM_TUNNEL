@@ -1,7 +1,7 @@
 {
-  "name": "nexus-tunnel-web",
+  "name": "tom_tunnel-tunnel-web",
   "version": "1.0.0",
-  "description": "Nexus Tunnel Web Panel — admin interface for Clone-script-all-buddy",
+  "description": "TOM_TUNNEL Web Panel — admin interface for Clone-script-all-buddy",
   "main": "dist/server/index.js",
   "scripts": {
     "build": "tsc",
