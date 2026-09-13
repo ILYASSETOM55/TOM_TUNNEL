@@ -10,9 +10,9 @@ from modules import system_core, ssh_core, admin_core, xray_core, zivpn_core
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s %(levelname)s %(message)s')
 
-CONFIG_FILE = '/etc/tom_tunnel_bot/config.json'
+CONFIG_FILE = '/etc/tom_tunnel_bot'
 
-MENU_IMAGE_URL = "https://github.com/user-attachments/assets/3283223c-3cef-4f66-89b8-c061027fb12e"
+MENU_IMAGE_URL = "https://github.com/user-attachments/assets/3a7c7588-48f0-4e3e-ad95-f9a23cd20311"
 
 def load_config():
     if not os.path.exists(CONFIG_FILE): return None
@@ -24,7 +24,7 @@ if not config: exit(1)
 
 def sync_to_web_panel(username, password, protocol, duration, created_by="telegram_bot"):
     try:
-        db_path = "/etc/tom_tunnel-web/tom_tunnel.db"
+        db_path = "/etc/tom-tunnel-web/tom.db"
         if not os.path.exists(db_path): return
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
@@ -52,7 +52,7 @@ def is_admin(user_id):
 def main_menu_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
-        InlineKeyboardButton("⚓ SSH/WS", callback_data="menu_ssh"),
+        InlineKeyboardButton("📡 SSH/WS", callback_data="menu_ssh"),
         InlineKeyboardButton("🛡️ VMESS", callback_data="menu_vmess"),
         InlineKeyboardButton("🛡️ VLESS", callback_data="menu_vless"),
         InlineKeyboardButton("🛡️ TROJAN", callback_data="menu_trojan"),
@@ -60,7 +60,7 @@ def main_menu_keyboard():
         InlineKeyboardButton("📱 ZIVPN", callback_data="menu_zivpn"),
         InlineKeyboardButton("📊 VPS STATUS", callback_data="menu_status"),
         InlineKeyboardButton("🧹 CLEAN LOGS", callback_data="menu_log"),
-        InlineKeyboardButton("👑 ADMINS", callback_data="menu_admins"),
+        InlineKeyboardButton("🎩 ADMINS", callback_data="menu_admins"),
         InlineKeyboardButton("🔄 REBOOT VPS", callback_data="action_reboot")
     )
     return markup
@@ -102,7 +102,7 @@ def send_welcome(message):
     bot.send_photo(
         message.chat.id,
         MENU_IMAGE_URL,
-        caption="<b>🟢 TOM TUNNEL PRO - C2 SERVER</b>\nSélectionnez un module :",
+        caption="<b>🟢 NEXUS TUNNEL PRO - C2 SERVER</b>\nSélectionnez un module :",
         parse_mode="HTML",
         reply_markup=main_menu_keyboard()
     )
@@ -118,7 +118,7 @@ def home_callback(call):
     bot.send_photo(
         call.message.chat.id,
         MENU_IMAGE_URL,
-        caption="<b>🟢 TOM TUNNEL PRO - C2 SERVER</b>\nSélectionnez un module :",
+        caption="<b>🟢 NEXUS TUNNEL PRO - C2 SERVER</b>\nSélectionnez un module :",
         parse_mode="HTML",
         reply_markup=main_menu_keyboard()
     )
@@ -132,9 +132,9 @@ def protocol_submenu(call):
     proto = call.data.split("_", 1)[1]
     _show_submenu(call, f"<b>Module {proto.upper()}</b>\nChoisissez une action :", protocol_menu_keyboard(proto))
 
-# ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+# ═══════════════════════════════════════════════════════════
 # SSH — CRÉATION
-# ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+# ═══════════════════════════════════════════════════════════
 @bot.callback_query_handler(func=lambda call: call.data == "add_ssh")
 def add_ssh_start(call):
     if not is_admin(call.from_user.id): return
@@ -240,9 +240,9 @@ def view_ssh_account(call):
     )
     _show_submenu(call, details, markup)
 
-# ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+# ═══════════════════════════════════════════════════════════
 # XRAY — MACHINE À ÉTATS COMMUNE (VLESS / VMESS / TROJAN / SOCKS)
-# ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+# ═══════════════════════════════════════════════════════════
 @bot.callback_query_handler(func=lambda call: call.data in ("add_vless", "add_vmess", "add_trojan", "add_socks"))
 def add_xray_start(call):
     if not is_admin(call.from_user.id): return
@@ -331,9 +331,9 @@ def view_xray_account(call):
     )
     _show_submenu(call, details, markup)
 
-# ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+# ═══════════════════════════════════════════════════════════
 # ZIVPN — CRÉATION
-# ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+# ═══════════════════════════════════════════════════════════
 @bot.callback_query_handler(func=lambda call: call.data == "add_zivpn")
 def add_zivpn_start(call):
     if not is_admin(call.from_user.id): return
@@ -421,9 +421,9 @@ def view_zivpn_account(call):
     )
     _show_submenu(call, details, markup)
 
-# ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+# ═══════════════════════════════════════════════════════════
 # SYSTÈME
-# ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+# ═══════════════════════════════════════════════════════════
 @bot.callback_query_handler(func=lambda call: call.data == "menu_status")
 def handle_status(call):
     if not is_admin(call.from_user.id): return
@@ -446,9 +446,9 @@ def handle_reboot(call):
     import subprocess
     subprocess.run("reboot", shell=True)
 
-# ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+# ═══════════════════════════════════════════════════════════
 # GESTION DES ADMINISTRATEURS
-# ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+# ═══════════════════════════════════════════════════════════
 @bot.callback_query_handler(func=lambda call: call.data == "menu_admins")
 def handle_menu_admins(call):
     if not is_admin(call.from_user.id): return
