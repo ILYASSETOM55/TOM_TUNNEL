@@ -2,7 +2,7 @@
 # Fichier : install_bot.sh
 # Rôle : Installation automatisée du Bot Telegram Tom Tunnel
 
-echo -e "\e[32m[+] Démarrage de l'installation du Bot Telegram Nexus Tunnel Pro...\e[0m"
+echo -e "\e[32m[+] Démarrage de l'installation du Bot Telegram Tom Tunnel...\e[0m"
 
 # 1. Mise à jour et dépendances
 echo -e "\e[33m[*] Installation des dépendances Python et Système...\e[0m"
