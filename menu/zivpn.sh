@@ -1,9 +1,9 @@
 clear
-export LN='[34m'
-export BG='[44m'
-export NC='[0m'
-export GR='[32m'
-export RD='[31m'
+export LN='[34m'
+export BG='[44m'
+export NC='[0m'
+export GR='[32m'
+export RD='[31m'
 export DOMAIN=$(cat /etc/xray/domain)
 export MYIP=$(wget -qO- ipv4.icanhazip.com)
 add_zivpn() {
@@ -51,7 +51,7 @@ done
 exp=$(date -d "+$days days" +"%Y-%m-%d")
 sed -i '/"config": \[/a\      "'"$pass"'",' /etc/zivpn/config.json
 sed -i ':a;N;$!ba;s/,
-[         ]*]/
+[ 	]*]/
     ]/' /etc/zivpn/config.json
 sed -i "1i$user $pass $exp" /etc/zivpn/user.db
 systemctl restart zivpn
@@ -94,7 +94,8 @@ i=1
 while read -r line; do
 username=$(echo "$line" | awk '{print $1}')
 password=$(echo "$line" | awk '{print $2}')
-expiry=$(echo "$line" | awk '{print $3}' | tr -d '')
+expiry=$(echo "$line" | awk '{print $3}' | tr -d '
+')
 printf "${LN}┃ %-5s %-15s %-15s %-10s ${NC}
 " "$i" "$username" "$password" "$expiry"
 ((i++))
@@ -145,7 +146,8 @@ i=1
 while read -r line; do
 username=$(echo "$line" | awk '{print $1}')
 password=$(echo "$line" | awk '{print $2}')
-expiry=$(echo "$line" | awk '{print $3}' | tr -d '')
+expiry=$(echo "$line" | awk '{print $3}' | tr -d '
+')
 printf "${LN}┃ %-5s %-15s %-15s %-10s ${NC}
 " "$i" "$username" "$password" "$expiry"
 ((i++))
@@ -163,7 +165,8 @@ echo -e "  ${RD}Username '$user' not found.${NC}"
 read -n 1 -s -r -p "  Press any key..."
 menu_zivpn
 fi
-current_exp=$(echo "$line" | awk '{print $3}' | tr -d '')
+current_exp=$(echo "$line" | awk '{print $3}' | tr -d '
+')
 read -rp "  Enter additional days: " add_days
 if [[ -z "$add_days" || ! "$add_days" =~ ^[0-9]+$ || "$add_days" -le 0 ]]; then
 echo -e "  ${RD}Invalid number of days.${NC}"
