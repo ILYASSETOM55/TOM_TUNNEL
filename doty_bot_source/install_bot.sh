@@ -14,9 +14,9 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 REPO_URL="https://github.com/ILYASSETOM55/TOM_TUNNEL.git"
-INSTALL_DIR="/opt/the_s_bot"
-CONFIG_DIR="/etc/the_s_bot"
-SERVICE_NAME="nexus_bot"
+INSTALL_DIR="/opt/tom_tunnel_bot"
+CONFIG_DIR="/etc/tom_tunnel_bot"
+SERVICE_NAME="tom_tunnel_bot"
 
 echo -e "${BLUE}=====================================================${NC}"
 echo -e "${BLUE}        INSTALLATION DE TOM BOT / TOM_TUNNEL      ${NC}"
