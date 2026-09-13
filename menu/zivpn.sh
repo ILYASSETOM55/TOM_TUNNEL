@@ -3,6 +3,7 @@
 # ============================================================
 # ZIVPN ACCOUNT MANAGER
 # Create / Renew / Delete / List
+# Connections / Quota / Usage
 # ============================================================
 
 clear
@@ -32,26 +33,29 @@ DOMAIN=$(cat /etc/xray/domain 2>/dev/null || echo "N/A")
 MYIP=$(wget -qO- -T 5 ipv4.icanhazip.com 2>/dev/null || echo "N/A")
 
 # ============================================================
+# DEFAULT QUOTA
+# ============================================================
+
+# Quota par défaut en GB.
+# Modifier cette valeur si nécessaire.
+DEFAULT_QUOTA_GB=10
+
+# ============================================================
 # INITIALIZE ZIVPN FILES
 # ============================================================
 
 init_zivpn_files() {
 
-    # Create directory
-    if [[ ! -d "$ZIVPN_DIR" ]]; then
-        mkdir -p "$ZIVPN_DIR"
-    fi
+    mkdir -p "$ZIVPN_DIR"
 
-    # Create database if missing
     if [[ ! -f "$USER_DB" ]]; then
         touch "$USER_DB"
-        chmod 600 "$USER_DB"
     fi
 
-    # Remove Windows CR characters if present
-    if [[ -f "$USER_DB" ]]; then
-        sed -i 's/\r$//' "$USER_DB"
-    fi
+    chmod 600 "$USER_DB"
+
+    # Remove Windows CRLF
+    sed -i 's/\r$//' "$USER_DB" 2>/dev/null
 }
 
 # ============================================================
@@ -63,13 +67,11 @@ check_zivpn_config() {
     if [[ ! -f "$CONFIG_FILE" ]]; then
         echo -e "  ${RD}[ERROR] ZIVPN config not found:${NC}"
         echo -e "  ${YL}$CONFIG_FILE${NC}"
-        echo ""
-        read -n 1 -s -r -p "  Press any key to return..."
         return 1
     fi
 
-    # Validate JSON if python is available
     if command -v python3 >/dev/null 2>&1; then
+
         if ! python3 - "$CONFIG_FILE" <<'PY'
 import json
 import sys
@@ -81,9 +83,7 @@ except Exception:
     sys.exit(1)
 PY
         then
-            echo -e "  ${RD}[ERROR] Invalid ZIVPN config.json${NC}"
-            echo ""
-            read -n 1 -s -r -p "  Press any key to return..."
+            echo -e "  ${RD}[ERROR] Invalid config.json${NC}"
             return 1
         fi
     fi
@@ -98,6 +98,7 @@ PY
 restart_zivpn() {
 
     if systemctl list-unit-files 2>/dev/null | grep -q '^zivpn.service'; then
+
         systemctl restart zivpn >/dev/null 2>&1
 
         if systemctl is-active --quiet zivpn; then
@@ -108,17 +109,19 @@ restart_zivpn() {
         return 1
     fi
 
-    echo -e "  ${YL}[WARNING] zivpn.service was not found.${NC}"
+    echo -e "  ${YL}[WARNING] zivpn.service not found.${NC}"
     return 1
 }
 
 # ============================================================
-# ADD PASSWORD TO CONFIG.JSON
+# PASSWORD -> CONFIG.JSON
 # ============================================================
 
 add_password_to_config() {
 
     local password="$1"
+
+    [[ ! -f "$CONFIG_FILE" ]] && return 1
 
     python3 - "$CONFIG_FILE" "$password" <<'PY'
 import json
@@ -129,14 +132,9 @@ config_file = sys.argv[1]
 password = sys.argv[2]
 
 try:
+
     with open(config_file, "r", encoding="utf-8") as f:
         data = json.load(f)
-
-    # Locate the password list.
-    # Expected structure:
-    # {
-    #     "config": [...]
-    # }
 
     if "config" not in data:
         data["config"] = []
@@ -147,15 +145,16 @@ try:
     if password not in data["config"]:
         data["config"].append(password)
 
-    tmp_file = config_file + ".tmp"
+    tmp = config_file + ".tmp"
 
-    with open(tmp_file, "w", encoding="utf-8") as f:
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
         f.write("\n")
 
-    os.replace(tmp_file, config_file)
+    os.replace(tmp, config_file)
 
 except Exception as e:
+
     print(f"ERROR: {e}", file=sys.stderr)
     sys.exit(1)
 PY
@@ -169,6 +168,8 @@ remove_password_from_config() {
 
     local password="$1"
 
+    [[ ! -f "$CONFIG_FILE" ]] && return 1
+
     python3 - "$CONFIG_FILE" "$password" <<'PY'
 import json
 import sys
@@ -178,27 +179,112 @@ config_file = sys.argv[1]
 password = sys.argv[2]
 
 try:
+
     with open(config_file, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     if "config" in data and isinstance(data["config"], list):
+
         data["config"] = [
             item for item in data["config"]
             if str(item) != password
         ]
 
-    tmp_file = config_file + ".tmp"
+    tmp = config_file + ".tmp"
 
-    with open(tmp_file, "w", encoding="utf-8") as f:
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
         f.write("\n")
 
-    os.replace(tmp_file, config_file)
+    os.replace(tmp, config_file)
 
 except Exception as e:
+
     print(f"ERROR: {e}", file=sys.stderr)
     sys.exit(1)
 PY
+}
+
+# ============================================================
+# CONNECTION COUNTER
+# ============================================================
+
+get_connected_users() {
+
+    local user="$1"
+    local count=0
+
+    # --------------------------------------------------------
+    # IMPORTANT:
+    # This searches current ZIVPN processes/connections.
+    # If your ZIVPN exposes another session database/API,
+    # replace this section with the official ZIVPN command.
+    # --------------------------------------------------------
+
+    if command -v ss >/dev/null 2>&1; then
+
+        count=$(ss -u -n -p 2>/dev/null |
+            grep -i "zivpn" |
+            grep -F "$user" |
+            wc -l)
+
+    fi
+
+    echo "$count"
+}
+
+# ============================================================
+# TRAFFIC USAGE
+# ============================================================
+
+get_user_usage() {
+
+    local user="$1"
+
+    # --------------------------------------------------------
+    # Placeholder until the installed ZIVPN exposes
+    # per-user traffic statistics.
+    #
+    # We return 0 GB instead of inventing traffic numbers.
+    # --------------------------------------------------------
+
+    echo "0.00"
+}
+
+# ============================================================
+# USER QUOTA
+# ============================================================
+
+get_user_quota() {
+
+    local user="$1"
+
+    # Current default quota.
+    # Can later be replaced by a per-user quota database.
+    echo "$DEFAULT_QUOTA_GB"
+}
+
+# ============================================================
+# REMAINING QUOTA
+# ============================================================
+
+get_user_remaining() {
+
+    local user="$1"
+
+    local quota
+    local used
+
+    quota=$(get_user_quota "$user")
+    used=$(get_user_usage "$user")
+
+    awk -v q="$quota" -v u="$used" '
+    BEGIN {
+        r=q-u
+        if (r < 0)
+            r=0
+        printf "%.2f", r
+    }'
 }
 
 # ============================================================
@@ -210,14 +296,21 @@ show_zivpn_users() {
     init_zivpn_files
 
     if [[ ! -s "$USER_DB" ]]; then
+
         echo -e "${LN}┃${NC}  ${YL}No ZIVPN users found.${NC}"
         return 1
     fi
 
-    printf "${LN}┃ %-5s %-18s %-18s %-12s${NC}\n" \
-        "No." "Username" "Password" "Expiry"
+    printf "${LN}┃ %-4s %-15s %-15s %-12s %-7s %-9s %-9s${NC}\n" \
+        "No." \
+        "Username" \
+        "Password" \
+        "Expiry" \
+        "Conn." \
+        "Used" \
+        "Quota"
 
-    echo -e "${LN}┃${NC}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "${LN}┃${NC}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     local i=1
     local username
@@ -226,21 +319,81 @@ show_zivpn_users() {
 
     while IFS=' ' read -r username password expiry _; do
 
-        # Skip empty/broken lines
         [[ -z "$username" ]] && continue
 
-        printf "${LN}┃${NC} %-5s %-18s %-18s %-12s\n" \
-            "$i" "$username" "$password" "$expiry"
+        local connected
+        local used
+        local quota
+
+        connected=$(get_connected_users "$username")
+        used=$(get_user_usage "$username")
+        quota=$(get_user_quota "$username")
+
+        printf "${LN}┃${NC} %-4s %-15s %-15s %-12s %-7s %-9s %-9s\n" \
+            "$i" \
+            "$username" \
+            "$password" \
+            "$expiry" \
+            "$connected" \
+            "${used}GB" \
+            "${quota}GB"
 
         ((i++))
 
     done < "$USER_DB"
 
+    echo -e "${LN}┃${NC}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
     return 0
 }
 
 # ============================================================
-# ADD ZIVPN ACCOUNT
+# ACCOUNT DETAILS
+# ============================================================
+
+show_account_details() {
+
+    local user="$1"
+
+    local line
+    local password
+    local expiry
+    local connected
+    local used
+    local quota
+    local remaining
+
+    line=$(awk -v u="$user" '$1 == u {print; exit}' "$USER_DB")
+
+    if [[ -z "$line" ]]; then
+        return 1
+    fi
+
+    password=$(echo "$line" | awk '{print $2}')
+    expiry=$(echo "$line" | awk '{print $3}')
+
+    connected=$(get_connected_users "$user")
+    used=$(get_user_usage "$user")
+    quota=$(get_user_quota "$user")
+    remaining=$(get_user_remaining "$user")
+
+    echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
+    echo -e "${LN}┃${NC} ${BG}                 ACCOUNT STATUS                 ${NC} ${LN}┃${NC}"
+    echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
+
+    echo -e "${LN}┃${NC} Username     : $user"
+    echo -e "${LN}┃${NC} Password     : $password"
+    echo -e "${LN}┃${NC} Expiry       : $expiry"
+    echo -e "${LN}┃${NC} Connected    : $connected"
+    echo -e "${LN}┃${NC} Used         : ${used} GB"
+    echo -e "${LN}┃${NC} Quota        : ${quota} GB"
+    echo -e "${LN}┃${NC} Remaining    : ${remaining} GB"
+
+    echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
+}
+
+# ============================================================
+# ADD ACCOUNT
 # ============================================================
 
 add_zivpn() {
@@ -265,7 +418,7 @@ add_zivpn() {
 
         if [[ ! "$user" =~ ^[a-zA-Z0-9_]+$ ]]; then
             echo -e "  ${RD}Invalid username.${NC}"
-            echo -e "  ${YL}Use only letters, numbers and underscore.${NC}"
+            echo -e "  ${YL}Use letters, numbers and underscore only.${NC}"
             continue
         fi
 
@@ -314,15 +467,23 @@ add_zivpn() {
 
     exp=$(date -d "+${days} days" +"%Y-%m-%d")
 
-    # Add password to config first
-    if ! add_password_to_config "$pass"; then
-        echo -e "  ${RD}[ERROR] Unable to update config.json${NC}"
-        echo ""
+    if ! check_zivpn_config; then
+
         read -n 1 -s -r -p "  Press any key..."
+        menu_zivpn
         return
     fi
 
-    # Add account to database
+    if ! add_password_to_config "$pass"; then
+
+        echo -e "  ${RD}[ERROR] Unable to update config.json${NC}"
+
+        read -n 1 -s -r -p "  Press any key..."
+
+        menu_zivpn
+        return
+    fi
+
     printf '%s %s %s\n' "$user" "$pass" "$exp" >> "$USER_DB"
 
     chmod 600 "$USER_DB"
@@ -337,11 +498,12 @@ add_zivpn() {
     echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
     echo -e "${LN}┃${NC}  ${GR}User added successfully!${NC}"
     echo -e "${LN}┃${NC}"
-    echo -e "${LN}┃${NC}  Username  : $user"
-    echo -e "${LN}┃${NC}  IPV4      : $MYIP"
-    echo -e "${LN}┃${NC}  Domain    : $DOMAIN"
-    echo -e "${LN}┃${NC}  Password  : $pass"
-    echo -e "${LN}┃${NC}  Expiry    : $exp"
+    echo -e "${LN}┃${NC} Username  : $user"
+    echo -e "${LN}┃${NC} IPV4      : $MYIP"
+    echo -e "${LN}┃${NC} Domain    : $DOMAIN"
+    echo -e "${LN}┃${NC} Password  : $pass"
+    echo -e "${LN}┃${NC} Expiry    : $exp"
+    echo -e "${LN}┃${NC} Quota     : ${DEFAULT_QUOTA_GB} GB"
     echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
     echo ""
 
@@ -351,7 +513,7 @@ add_zivpn() {
 }
 
 # ============================================================
-# DELETE ZIVPN ACCOUNT
+# DELETE ACCOUNT
 # ============================================================
 
 del_zivpn() {
@@ -367,10 +529,9 @@ del_zivpn() {
 
     if [[ ! -s "$USER_DB" ]]; then
 
-        echo -e "${LN}┃${NC}  ${YL}No users found.${NC}"
-        echo ""
+        echo -e "  ${YL}No users found.${NC}"
 
-        read -n 1 -s -r -p "  Press any key to return..."
+        read -n 1 -s -r -p "  Press any key..."
 
         menu_zivpn
         return
@@ -379,19 +540,18 @@ del_zivpn() {
     show_zivpn_users
 
     echo ""
-    echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
-    echo ""
-
     read -rp "  Enter username to delete: " user
 
     if [[ -z "$user" ]]; then
+
         echo -e "  ${RD}Username cannot be empty.${NC}"
+
         read -n 1 -s -r -p "  Press any key..."
+
         menu_zivpn
         return
     fi
 
-    # Find exact user line
     line=$(awk -v u="$user" '$1 == u {print; exit}' "$USER_DB")
 
     if [[ -z "$line" ]]; then
@@ -404,17 +564,18 @@ del_zivpn() {
         return
     fi
 
-    pass=$(printf '%s\n' "$line" | awk '{print $2}')
+    pass=$(echo "$line" | awk '{print $2}')
 
-    # Remove password from config
     if ! remove_password_from_config "$pass"; then
+
         echo -e "  ${RD}[ERROR] Could not update config.json${NC}"
+
         read -n 1 -s -r -p "  Press any key..."
+
         menu_zivpn
         return
     fi
 
-    # Remove exact username line
     awk -v u="$user" '$1 != u' "$USER_DB" > "${USER_DB}.tmp"
 
     mv "${USER_DB}.tmp" "$USER_DB"
@@ -433,7 +594,7 @@ del_zivpn() {
 }
 
 # ============================================================
-# RENEW ZIVPN ACCOUNT
+# RENEW ACCOUNT
 # ============================================================
 
 renew_zivpn() {
@@ -450,9 +611,8 @@ renew_zivpn() {
     if [[ ! -s "$USER_DB" ]]; then
 
         echo -e "  ${YL}No users found.${NC}"
-        echo ""
 
-        read -n 1 -s -r -p "  Press any key to return..."
+        read -n 1 -s -r -p "  Press any key..."
 
         menu_zivpn
         return
@@ -461,9 +621,6 @@ renew_zivpn() {
     show_zivpn_users
 
     echo ""
-    echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
-    echo ""
-
     read -rp "  Enter username to renew: " user
 
     if [[ -z "$user" ]]; then
@@ -488,8 +645,8 @@ renew_zivpn() {
         return
     fi
 
-    current_exp=$(printf '%s\n' "$line" | awk '{print $3}')
-    password=$(printf '%s\n' "$line" | awk '{print $2}')
+    current_exp=$(echo "$line" | awk '{print $3}')
+    password=$(echo "$line" | awk '{print $2}')
 
     while true; do
 
@@ -503,8 +660,6 @@ renew_zivpn() {
         break
     done
 
-    # If current expiration is already past,
-    # renew from today instead of the old expiration date.
     today=$(date +%Y-%m-%d)
 
     if [[ "$current_exp" < "$today" ]]; then
@@ -513,7 +668,6 @@ renew_zivpn() {
         new_exp=$(date -d "${current_exp} +${add_days} days" +"%Y-%m-%d")
     fi
 
-    # Replace exact user line
     awk -v u="$user" \
         -v p="$password" \
         -v e="$new_exp" \
@@ -532,20 +686,20 @@ renew_zivpn() {
     echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
     echo -e "${LN}┃${NC}  ${GR}User renewed successfully!${NC}"
     echo -e "${LN}┃${NC}"
-    echo -e "${LN}┃${NC}  Username   : $user"
-    echo -e "${LN}┃${NC}  Old expiry : $current_exp"
-    echo -e "${LN}┃${NC}  New expiry : $new_exp"
-    echo -e "${LN}┃${NC}  Days added : $add_days"
+    echo -e "${LN}┃${NC} Username   : $user"
+    echo -e "${LN}┃${NC} Old expiry : $current_exp"
+    echo -e "${LN}┃${NC} New expiry : $new_exp"
+    echo -e "${LN}┃${NC} Days added : $add_days"
     echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
     echo ""
 
-    read -n 1 -s -r -p "   Press any key to return to menu..."
+    read -n 1 -s -r -p " Press any key to return to menu..."
 
     menu_zivpn
 }
 
 # ============================================================
-# LIST ZIVPN ACCOUNTS
+# LIST ACCOUNTS
 # ============================================================
 
 list_zivpn() {
@@ -554,17 +708,16 @@ list_zivpn() {
 
     clear
 
-    echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
-    echo -e "${LN}┃${NC} ${BG}                ZIVPN ACCOUNT LIST              ${NC} ${LN}┃${NC}"
-    echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
-    echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
+    echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
+    echo -e "${LN}┃${NC} ${BG}                 ZIVPN ACCOUNT LIST                         ${NC} ${LN}┃${NC}"
+    echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
+    echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
 
     if [[ ! -s "$USER_DB" ]]; then
 
         echo -e "${LN}┃${NC}  ${YL}No ZIVPN users found.${NC}"
-        echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
-        echo -e "${LN}●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━●${NC}"
-        echo ""
+
+        echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
 
         read -n 1 -s -r -p " Press any key to return..."
 
@@ -574,8 +727,54 @@ list_zivpn() {
 
     show_zivpn_users
 
+    echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
+    echo -e "${LN}●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━●${NC}"
+    echo ""
+
+    read -n 1 -s -r -p " Press any key to return..."
+
+    menu_zivpn
+}
+
+# ============================================================
+# ACCOUNT INFORMATION
+# ============================================================
+
+account_info_zivpn() {
+
+    init_zivpn_files
+
+    clear
+
+    echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
+    echo -e "${LN}┃${NC} ${BG}              ZIVPN ACCOUNT INFO                ${NC} ${LN}┃${NC}"
     echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
-    echo -e "${LN}●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━●${NC}"
+    echo ""
+
+    if [[ ! -s "$USER_DB" ]]; then
+
+        echo -e "  ${YL}No users found.${NC}"
+
+        read -n 1 -s -r -p "  Press any key..."
+
+        menu_zivpn
+        return
+    fi
+
+    show_zivpn_users
+
+    echo ""
+    read -rp "  Enter username: " user
+
+    if [[ -z "$user" ]]; then
+        menu_zivpn
+        return
+    fi
+
+    clear
+
+    show_account_details "$user"
+
     echo ""
 
     read -n 1 -s -r -p " Press any key to return..."
@@ -591,7 +790,6 @@ menu_zivpn() {
 
     clear
 
-    # Reinitialize files every time menu opens
     init_zivpn_files
 
     echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
@@ -600,6 +798,7 @@ menu_zivpn() {
     echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
     echo -e "${LN}┃${NC} [01] • Create Account      [03] • Delete Account"
     echo -e "${LN}┃${NC} [02] • Extend Account      [04] • Account List"
+    echo -e "${LN}┃${NC} [05] • Account Information"
     echo -e "${LN}┃${NC}"
     echo -e "${LN}┃${NC} [00] • Back to Main Menu"
     echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
@@ -626,6 +825,10 @@ menu_zivpn() {
             list_zivpn
             ;;
 
+        5|05)
+            account_info_zivpn
+            ;;
+
         0|00)
             clear
             menu
@@ -633,7 +836,7 @@ menu_zivpn() {
 
         *)
             echo ""
-            echo -e "  ${RD}[ERROR] Invalid selection!${NC}"
+            echo -e "${RD} [ERROR] Invalid selection!${NC}"
             sleep 1
             menu_zivpn
             ;;
