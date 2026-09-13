@@ -1,12 +1,12 @@
 [Unit]
-Description=Tom_Tunnel Bot Telegram C2
+Description=tom_tunnel Bot Telegram C2
 After=network.target
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/etc/tom_tunnel_bot
-ExecStart=/usr/bin/python3 /etc/tom_tunnel_bot/nexus_bot.py
+ExecStart=/usr/bin/python3 /etc/tom_tunnel_bot/tom_tunnel_bot.py
 Restart=always
 RestartSec=3
 
