@@ -24,7 +24,7 @@ if not config: exit(1)
 
 def sync_to_web_panel(username, password, protocol, duration, created_by="telegram_bot"):
     try:
-        db_path = "/etc/tom-tunnel-web/tom.db"
+        db_path = "/etc/tom-tunnel-web/tom_tunnel.db"
         if not os.path.exists(db_path): return
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
