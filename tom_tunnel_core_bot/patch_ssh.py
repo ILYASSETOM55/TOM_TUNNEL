@@ -1,4 +1,4 @@
-with open("tom_bot.py", "r") as f:
+with open("tom_tunnel_bot.py", "r") as f:
     content = f.read()
 
 ssh_logic = """
@@ -44,5 +44,5 @@ def process_ssh_days(message, user, password):
 # On insère la logique juste avant le lancement de la boucle principale
 content = content.replace('if __name__ == "__main__":', ssh_logic + '\nif __name__ == "__main__":')
 
-with open("nexus_bot.py", "w") as f:
+with open("tom_tunnel_bot.py", "w") as f:
     f.write(content)
