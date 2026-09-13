@@ -10,7 +10,7 @@ from modules import system_core, ssh_core, admin_core, xray_core, zivpn_core
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s %(levelname)s %(message)s')
 
-CONFIG_FILE = '/etc/tom_tunnel_bot'
+CONFIG_FILE = '/etc/tom_tunnel_bot/config.json'
 
 MENU_IMAGE_URL = "https://github.com/user-attachments/assets/3a7c7588-48f0-4e3e-ad95-f9a23cd20311"
 
