@@ -1,5 +1,5 @@
 [Unit]
-Description=tom_tunnel Bot Telegram C2
+Description=TOM TUNNEL 
 After=network.target
 
 [Service]
