@@ -10,9 +10,9 @@ from modules import system_core, ssh_core, admin_core, xray_core, zivpn_core
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s %(levelname)s %(message)s')
 
-CONFIG_FILE = '/etc/nexus_bot/config.json'
+CONFIG_FILE = '/etc/tom_tunnel_bot/config.json'
 
-MENU_IMAGE_URL = "https://github.com/user-attachments/assets/df687a92-7883-403d-8dab-0b62a86326eb"
+MENU_IMAGE_URL = "https://github.com/user-attachments/assets/3283223c-3cef-4f66-89b8-c061027fb12e"
 
 def load_config():
     if not os.path.exists(CONFIG_FILE): return None
@@ -24,7 +24,7 @@ if not config: exit(1)
 
 def sync_to_web_panel(username, password, protocol, duration, created_by="telegram_bot"):
     try:
-        db_path = "/etc/tom-tunnel-web/nexus.db"
+        db_path = "/etc/tom_tunnel-web/tom_tunnel.db"
         if not os.path.exists(db_path): return
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
