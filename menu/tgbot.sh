@@ -158,8 +158,8 @@ BOT_MAIN=""
 # Priorité au nom attendu
 if [[ -f "$BOT_DIR/tom_tunnel_bot.py" ]]; then
     BOT_MAIN="$BOT_DIR/tom_tunnel_bot.py"
-elif [[ -f "$BOT_DIR/nexus_bot.py" ]]; then
-    BOT_MAIN="$BOT_DIR/nexus_bot.py"
+elif [[ -f "$BOT_DIR/tom_tunnel_bot.py" ]]; then
+    BOT_MAIN="$BOT_DIR/tom_tunnel_bot.py"
 else
     # Recherche automatique d'un fichier Python contenant le bot
     BOT_MAIN=$(find "$BOT_DIR" -maxdepth 2 -type f -name "*.py" | head -n 1)
