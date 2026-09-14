@@ -16,7 +16,7 @@ YL='\e[33m'
 BOT_DIR="/etc/tom_tunnel_bot"
 TEMP_DIR="/tmp/tom_tunnel_bot_temp"
 
-# URL utilisée uniquement en interne
+# URL utilisée en interne uniquement — jamais affichée
 REPO_URL="https://github.com/ILYASSETOM55/TOM_TUNNEL.git"
 
 BOT_SOURCE="${TEMP_DIR}/tom_tunnel_core_bot"
@@ -29,7 +29,7 @@ SERVICE_FILE="/etc/systemd/system/tom_tunnel_bot.service"
 # ==========================================================
 
 echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
-echo -e "${LN}┃${NC}${BG}          INSTALLATION DE TOM_TUNNEL BOT          ${NC}${LN}"
+echo -e "${LN}┃${NC}${BG}          INSTALLATION DE TOM_TUNNEL BOT          ${NC}${LN}┃${NC}"
 echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
 echo
 
@@ -50,8 +50,7 @@ fi
 # TOKEN
 # ==========================================================
 
-read -r -s -p " ➔ Entrez le TOKEN du Bot : " bot_token
-echo
+read -p " ➔ Entrez le TOKEN du Bot : " bot_token
 
 if [[ -z "$bot_token" ]]; then
     echo -e "${RD}[-] Erreur : le Token est obligatoire.${NC}"
@@ -62,7 +61,7 @@ fi
 # ADMIN ID
 # ==========================================================
 
-read -r -p " ➔ Entrez votre ID Telegram : " admin_id
+read -p " ➔ Entrez votre ID Telegram : " admin_id
 
 if [[ -z "$admin_id" ]]; then
     echo -e "${RD}[-] Erreur : l'ID Telegram est obligatoire.${NC}"
@@ -85,41 +84,34 @@ systemctl stop tom_tunnel_bot.service >/dev/null 2>&1
 systemctl disable tom_tunnel_bot.service >/dev/null 2>&1
 
 # ==========================================================
-# PREPARATION SYSTEME
+# INSTALLATION PAQUETS
 # ==========================================================
 
 echo -e "${GR}[+] Préparation de l'environnement système...${NC}"
 
 export DEBIAN_FRONTEND=noninteractive
 
-if ! apt-get update -y >/dev/null 2>&1; then
-    echo -e "${RD}[-] ERREUR : impossible de préparer le système.${NC}"
-    exit 1
-fi
+apt-get update -y >/dev/null 2>&1
 
-if ! apt-get install -y \
+apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \
     git \
-    curl >/dev/null 2>&1; then
-
-    echo -e "${RD}[-] ERREUR : impossible d'installer les composants nécessaires.${NC}"
-    exit 1
-fi
+    curl >/dev/null 2>&1
 
 if ! command -v python3 >/dev/null 2>&1; then
-    echo -e "${RD}[-] ERREUR : Python3 n'est pas disponible.${NC}"
+    echo -e "${RD}[-] Python3 n'est pas disponible.${NC}"
     exit 1
 fi
 
 if ! command -v git >/dev/null 2>&1; then
-    echo -e "${RD}[-] ERREUR : le composant de téléchargement n'est pas disponible.${NC}"
+    echo -e "${RD}[-] Git n'est pas disponible.${NC}"
     exit 1
 fi
 
 # ==========================================================
-# NETTOYAGE
+# NETTOYAGE TEMPORAIRE
 # ==========================================================
 
 echo -e "${GR}[+] Nettoyage des anciens fichiers temporaires...${NC}"
@@ -130,73 +122,57 @@ rm -rf "$TEMP_DIR"
 # DOSSIER BOT
 # ==========================================================
 
-echo -e "${GR}[+] Création du répertoire TOM_TUNNEL BOT...${NC}"
+echo -e "${GR}[+] Création du dossier TOM_TUNNEL BOT...${NC}"
 
-if ! mkdir -p "$BOT_DIR"; then
-    echo -e "${RD}[-] ERREUR : impossible de créer le répertoire du bot.${NC}"
-    exit 1
-fi
+mkdir -p "$BOT_DIR"
 
 # ==========================================================
 # CONFIGURATION
 # ==========================================================
 
-echo -e "${GR}[+] Création sécurisée de la configuration...${NC}"
+echo -e "${GR}[+] Création de la configuration Telegram...${NC}"
 
 cat > "$CONFIG_FILE" <<EOF
 {
-  "bot_token": "$bot_token",
-  "super_admin": $admin_id,
-  "admins": []
+    "bot_token": "$bot_token",
+    "super_admin": $admin_id,
+    "admins": []
 }
 EOF
 
-if [[ $? -ne 0 ]]; then
-    echo -e "${RD}[-] ERREUR : impossible de créer la configuration.${NC}"
-    exit 1
-fi
-
 chmod 600 "$CONFIG_FILE"
 
-# Nettoyage de la variable contenant le token
-unset bot_token
-
 # ==========================================================
-# TELECHARGEMENT DU MOTEUR
+# TELECHARGEMENT DEPOT
 # ==========================================================
 
-echo -e "${GR}[+] Téléchargement du moteur TOM B2...${NC}"
+echo -e "${GR}[+] Téléchargement des composants TOM_TUNNEL...${NC}"
 
-if ! git clone \
-    -q \
-    --depth 1 \
-    "$REPO_URL" \
-    "$TEMP_DIR" \
-    >/dev/null 2>&1; then
-
-    echo -e "${RD}[-] ERREUR : impossible de télécharger le moteur.${NC}"
-
+# L'URL du dépôt et les détails Git ne sont pas affichés.
+if ! git clone --depth 1 "$REPO_URL" "$TEMP_DIR" >/dev/null 2>&1; then
+    echo
+    echo -e "${RD}[-] ERREUR : impossible de télécharger les composants.${NC}"
     rm -rf "$TEMP_DIR"
-
     exit 1
 fi
 
-echo -e "${GR}[✓] Moteur TOM B2 téléchargé.${NC}"
+echo -e "${GR}[✓] Composants téléchargés avec succès.${NC}"
 
 # ==========================================================
-# VERIFICATION DU MOTEUR
+# VERIFICATION MODULE BOT
 # ==========================================================
 
-echo -e "${GR}[+] Vérification du moteur TOM_TUNNEL BOT...${NC}"
+echo -e "${GR}[+] Recherche du moteur TOM_TUNNEL BOT...${NC}"
 
 if [[ ! -d "$BOT_SOURCE" ]]; then
 
-    echo -e "${RD}[-] ERREUR : le moteur du bot est introuvable.${NC}"
-    echo -e "${YL}[!] Installation interrompue.${NC}"
+    echo -e "${RD}[-] ERREUR : le module du bot est introuvable.${NC}"
+    echo
+    echo -e "${YL}L'installation ne peut pas continuer.${NC}"
 
     rm -rf "$TEMP_DIR"
-
     exit 1
+
 fi
 
 echo -e "${GR}[✓] Moteur TOM_TUNNEL BOT trouvé.${NC}"
@@ -205,20 +181,11 @@ echo -e "${GR}[✓] Moteur TOM_TUNNEL BOT trouvé.${NC}"
 # COPIE DES FICHIERS
 # ==========================================================
 
-echo -e "${GR}[+] Installation des fichiers du bot...${NC}"
+echo -e "${GR}[+] Copie des composants du bot...${NC}"
 
 rm -rf "$BOT_DIR/modules"
 
-if ! cp -a "$BOT_SOURCE/." "$BOT_DIR/" >/dev/null 2>&1; then
-
-    echo -e "${RD}[-] ERREUR : impossible d'installer les fichiers du bot.${NC}"
-
-    rm -rf "$TEMP_DIR"
-
-    exit 1
-fi
-
-echo -e "${GR}[✓] Fichiers du bot installés.${NC}"
+cp -a "$BOT_SOURCE/." "$BOT_DIR/"
 
 # ==========================================================
 # VERIFICATION FICHIER PRINCIPAL
@@ -232,99 +199,71 @@ if [[ ! -f "$BOT_FILE" ]]; then
         \( -name "tom_tunnel_bot.py" \
         -o -name "bot.py" \
         -o -name "main.py" \) \
-        2>/dev/null | head -n 1)
+        | head -n 1)
 
     if [[ -n "$FOUND_BOT" ]]; then
         BOT_FILE="$FOUND_BOT"
     fi
+
 fi
 
 if [[ ! -f "$BOT_FILE" ]]; then
 
-    echo -e "${RD}[-] ERREUR : le fichier principal du bot est introuvable.${NC}"
-    echo -e "${YL}[!] Installation interrompue.${NC}"
+    echo -e "${RD}[-] ERREUR : fichier principal du bot introuvable.${NC}"
+    echo
+    echo -e "${YL}Aucun moteur Python valide n'a été trouvé.${NC}"
 
     rm -rf "$TEMP_DIR"
-
     exit 1
+
 fi
 
-echo -e "${GR}[✓] Fichier principal du bot validé.${NC}"
+echo -e "${GR}[✓] Moteur du bot prêt.${NC}"
 
 # ==========================================================
-# ENVIRONNEMENT PYTHON
+# ENVIRONNEMENT VIRTUEL PYTHON
 # ==========================================================
 
-echo -e "${GR}[+] Préparation de l'environnement Python isolé...${NC}"
+echo -e "${GR}[+] Création de l'environnement Python...${NC}"
 
 rm -rf "$VENV_DIR"
 
-if ! python3 -m venv "$VENV_DIR" >/dev/null 2>&1; then
-
-    echo -e "${RD}[-] ERREUR : impossible de créer l'environnement Python.${NC}"
-
-    rm -rf "$TEMP_DIR"
-
-    exit 1
-fi
+python3 -m venv "$VENV_DIR"
 
 if [[ ! -x "$VENV_DIR/bin/python" ]]; then
-
-    echo -e "${RD}[-] ERREUR : environnement Python invalide.${NC}"
-
-    rm -rf "$TEMP_DIR"
-
+    echo -e "${RD}[-] ERREUR : impossible de créer l'environnement Python.${NC}"
     exit 1
 fi
 
-echo -e "${GR}[✓] Environnement Python créé.${NC}"
-
 # ==========================================================
-# MISE A JOUR PIP
+# PIP
 # ==========================================================
 
-echo -e "${GR}[+] Mise à jour de pip...${NC}"
+echo -e "${GR}[+] Préparation de l'environnement Python...${NC}"
 
-if ! "$VENV_DIR/bin/python" -m pip install \
-    --disable-pip-version-check \
-    -q \
-    --upgrade \
-    pip \
-    setuptools \
-    wheel \
-    >/dev/null 2>&1; then
+"$VENV_DIR/bin/python" -m pip install \
+    --upgrade pip setuptools wheel >/dev/null 2>&1
 
-    echo -e "${RD}[-] ERREUR : impossible de préparer pip.${NC}"
-
-    rm -rf "$TEMP_DIR"
-
+if [[ $? -ne 0 ]]; then
+    echo -e "${RD}[-] ERREUR : préparation de pip échouée.${NC}"
     exit 1
 fi
 
-echo -e "${GR}[✓] Pip prêt.${NC}"
-
 # ==========================================================
-# DEPENDANCES PRINCIPALES
+# DEPENDANCES OBLIGATOIRES
 # ==========================================================
 
-echo -e "${GR}[+] Installation des composants nécessaires...${NC}"
+echo -e "${GR}[+] Installation des dépendances TOM_TUNNEL...${NC}"
 
-if ! "$VENV_DIR/bin/python" -m pip install \
-    --disable-pip-version-check \
-    -q \
+"$VENV_DIR/bin/python" -m pip install \
     psutil \
     requests \
-    pyTelegramBotAPI \
-    >/dev/null 2>&1; then
+    pyTelegramBotAPI >/dev/null 2>&1
 
-    echo -e "${RD}[-] ERREUR : installation des composants échouée.${NC}"
-
-    rm -rf "$TEMP_DIR"
-
+if [[ $? -ne 0 ]]; then
+    echo -e "${RD}[-] ERREUR : installation des dépendances principales échouée.${NC}"
     exit 1
 fi
-
-echo -e "${GR}[✓] Composants installés.${NC}"
 
 # ==========================================================
 # REQUIREMENTS.TXT
@@ -335,19 +274,12 @@ if [[ -f "$BOT_DIR/requirements.txt" ]]; then
     echo -e "${GR}[+] Installation des dépendances supplémentaires...${NC}"
 
     if ! "$VENV_DIR/bin/python" -m pip install \
-        --disable-pip-version-check \
-        -q \
-        -r "$BOT_DIR/requirements.txt" \
-        >/dev/null 2>&1; then
+        -r "$BOT_DIR/requirements.txt" >/dev/null 2>&1; then
 
-        echo -e "${RD}[-] ERREUR : une dépendance supplémentaire ne peut pas être installée.${NC}"
-
-        rm -rf "$TEMP_DIR"
-
+        echo -e "${RD}[-] ERREUR : une dépendance supplémentaire est impossible à installer.${NC}"
         exit 1
-    fi
 
-    echo -e "${GR}[✓] Dépendances supplémentaires installées.${NC}"
+    fi
 
 else
 
@@ -359,18 +291,14 @@ fi
 # TEST PSUTIL
 # ==========================================================
 
-echo -e "${GR}[+] Vérification du moteur système...${NC}"
+echo -e "${GR}[+] Vérification des composants système...${NC}"
 
 if ! "$VENV_DIR/bin/python" -c "import psutil" >/dev/null 2>&1; then
-
-    echo -e "${RD}[-] ERREUR : le moteur système n'est pas fonctionnel.${NC}"
-
-    rm -rf "$TEMP_DIR"
-
+    echo -e "${RD}[-] ERREUR : composant système indisponible.${NC}"
     exit 1
 fi
 
-echo -e "${GR}[✓] Moteur système fonctionnel.${NC}"
+echo -e "${GR}[✓] Composants système opérationnels.${NC}"
 
 # ==========================================================
 # TEST REQUESTS
@@ -379,43 +307,32 @@ echo -e "${GR}[✓] Moteur système fonctionnel.${NC}"
 echo -e "${GR}[+] Vérification de la communication réseau...${NC}"
 
 if ! "$VENV_DIR/bin/python" -c "import requests" >/dev/null 2>&1; then
-
-    echo -e "${RD}[-] ERREUR : le module réseau n'est pas fonctionnel.${NC}"
-
-    rm -rf "$TEMP_DIR"
-
+    echo -e "${RD}[-] ERREUR : module réseau indisponible.${NC}"
     exit 1
 fi
 
-echo -e "${GR}[✓] Communication réseau fonctionnelle.${NC}"
+echo -e "${GR}[✓] Communication réseau prête.${NC}"
 
 # ==========================================================
-# TEST TELEGRAM
+# TEST TELEBOT
 # ==========================================================
 
 echo -e "${GR}[+] Vérification de l'interface Telegram...${NC}"
 
 if ! "$VENV_DIR/bin/python" -c "import telebot" >/dev/null 2>&1; then
-
-    echo -e "${RD}[-] ERREUR : l'interface Telegram n'est pas disponible.${NC}"
-
-    rm -rf "$TEMP_DIR"
-
+    echo -e "${RD}[-] ERREUR : interface Telegram indisponible.${NC}"
     exit 1
 fi
 
-echo -e "${GR}[✓] Interface Telegram fonctionnelle.${NC}"
+echo -e "${GR}[✓] Interface Telegram prête.${NC}"
 
 # ==========================================================
-# TEST MODULES BOT
+# TEST IMPORTS TOM_TUNNEL
 # ==========================================================
 
-echo -e "${GR}[+] Vérification des modules du bot...${NC}"
+echo -e "${GR}[+] Vérification des modules TOM_TUNNEL...${NC}"
 
-cd "$BOT_DIR" || {
-    echo -e "${RD}[-] ERREUR : impossible d'accéder au répertoire du bot.${NC}"
-    exit 1
-}
+cd "$BOT_DIR" || exit 1
 
 if ! "$VENV_DIR/bin/python" -c "
 import sys
@@ -426,26 +343,25 @@ import requests
 import telebot
 
 from modules import system_core
+
+print('IMPORTS_OK')
 " >/dev/null 2>&1; then
 
-    echo -e "${RD}[-] ERREUR : un module du bot ne peut pas être chargé.${NC}"
-    echo -e "${YL}[!] Installation interrompue.${NC}"
-
-    rm -rf "$TEMP_DIR"
-
+    echo -e "${RD}[-] ERREUR : un module TOM_TUNNEL ne peut pas être chargé.${NC}"
+    echo -e "${YL}Vérifiez l'installation des composants du bot.${NC}"
     exit 1
+
 fi
 
-echo -e "${GR}[✓] Modules du bot chargés correctement.${NC}"
+echo -e "${GR}[✓] Modules TOM_TUNNEL chargés correctement.${NC}"
 
 # ==========================================================
 # PERMISSIONS
 # ==========================================================
 
-echo -e "${GR}[+] Configuration sécurisée des permissions...${NC}"
+echo -e "${GR}[+] Configuration des permissions...${NC}"
 
 chmod -R 755 "$BOT_DIR"
-
 chmod 600 "$CONFIG_FILE"
 
 mkdir -p /var/log/tom_tunnel_bot
@@ -453,14 +369,13 @@ mkdir -p /var/log/tom_tunnel_bot
 touch /var/log/tom_tunnel_bot/bot.log
 
 chmod 755 /var/log/tom_tunnel_bot
-
 chmod 644 /var/log/tom_tunnel_bot/bot.log
 
 # ==========================================================
 # SERVICE SYSTEMD
 # ==========================================================
 
-echo -e "${GR}[+] Configuration du service TOM_TUNNEL BOT...${NC}"
+echo -e "${GR}[+] Création du service système...${NC}"
 
 cat > "$SERVICE_FILE" <<EOF
 [Unit]
@@ -487,22 +402,9 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 
-if [[ $? -ne 0 ]]; then
-
-    echo -e "${RD}[-] ERREUR : impossible de configurer le service.${NC}"
-
-    rm -rf "$TEMP_DIR"
-
-    exit 1
-fi
-
-echo -e "${GR}[✓] Service configuré.${NC}"
-
 # ==========================================================
-# NETTOYAGE FINAL
+# NETTOYAGE
 # ==========================================================
-
-echo -e "${GR}[+] Nettoyage de l'installation...${NC}"
 
 rm -rf "$TEMP_DIR"
 
@@ -512,20 +414,11 @@ rm -rf "$TEMP_DIR"
 
 echo -e "${GR}[+] Activation du service TOM_TUNNEL BOT...${NC}"
 
-if ! systemctl daemon-reload >/dev/null 2>&1; then
-    echo -e "${RD}[-] ERREUR : impossible de recharger systemd.${NC}"
-    exit 1
-fi
+systemctl daemon-reload
 
-if ! systemctl enable tom_tunnel_bot.service >/dev/null 2>&1; then
-    echo -e "${RD}[-] ERREUR : impossible d'activer le service.${NC}"
-    exit 1
-fi
+systemctl enable tom_tunnel_bot.service >/dev/null 2>&1
 
-if ! systemctl restart tom_tunnel_bot.service >/dev/null 2>&1; then
-    echo -e "${RD}[-] ERREUR : impossible de démarrer le bot.${NC}"
-    exit 1
-fi
+systemctl restart tom_tunnel_bot.service
 
 sleep 4
 
@@ -537,15 +430,15 @@ if systemctl is-active --quiet tom_tunnel_bot.service; then
 
     echo
     echo -e "${GR}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
-    echo -e "${GR}┃          ✓ TOM_TUNNEL BOT ACTIVÉ               ┃${NC}"
+    echo -e "${GR}┃        ✓ TOM_TUNNEL BOT ACTIVÉ                  ┃${NC}"
     echo -e "${GR}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
     echo
 
     echo -e "${GR}[✓] Service : ACTIF${NC}"
     echo -e "${GR}[✓] Admin   : $admin_id${NC}"
-    echo -e "${GR}[✓] Telegram: PRÊT${NC}"
-
+    echo -e "${GR}[✓] Installation : TERMINÉE${NC}"
     echo
+
     echo -e "${GR}➡ Allez sur Telegram et envoyez /start${NC}"
 
 else
@@ -556,14 +449,15 @@ else
     echo -e "${RD}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
     echo
 
-    echo -e "${YL}[!] Le service n'a pas démarré correctement.${NC}"
+    echo -e "${YL}Le service n'a pas démarré correctement.${NC}"
     echo
-    echo -e "${YL}Pour consulter les logs du service :${NC}"
-    echo -e "journalctl -u tom_tunnel_bot -n 40 --no-pager"
+    echo -e "${YL}Utilisez la commande suivante pour consulter les journaux :${NC}"
+    echo -e "journalctl -u tom_tunnel_bot -f"
 
     exit 1
+
 fi
 
 echo
-echo -e "${GR}[✓] Installation terminée avec succès.${NC}"
+echo -e "${GR}[+] Installation terminée.${NC}"
 echo
