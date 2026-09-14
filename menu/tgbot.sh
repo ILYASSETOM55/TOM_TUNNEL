@@ -19,6 +19,7 @@ REPO_URL="https://github.com/ILYASSETOM55/TOM_TUNNEL.git"
 BOT_SOURCE="${TEMP_DIR}/tom_tunnel_core_bot"
 CONFIG_FILE="${BOT_DIR}/config.json"
 SERVICE_FILE="/etc/systemd/system/tom_tunnel_bot.service"
+GIT_LOG="/tmp/tom_tunnel_git.log"
 
 echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
 echo -e "${LN}┃${NC}${BG}          INSTALLATION DE TOM_TUNNEL BOT          ${NC}${LN}┃${NC}"
@@ -42,7 +43,7 @@ fi
 # TOKEN TELEGRAM
 # ==========================================================
 
-read -p " ➔ Entrez le TOKEN du Bot (ex: 1234:ABCDef...) : " bot_token
+read -p " ➔ Entrez le TOKEN du Bot : " bot_token
 
 if [[ -z "$bot_token" ]]; then
     echo -e "${RD}[-] Erreur : le Token est obligatoire.${NC}"
@@ -59,7 +60,7 @@ fi
 # ID TELEGRAM ADMIN
 # ==========================================================
 
-read -p " ➔ Entrez votre ID Telegram (ex: 123456789) : " admin_id
+read -p " ➔ Entrez votre ID Telegram : " admin_id
 
 if [[ -z "$admin_id" ]]; then
     echo -e "${RD}[-] Erreur : l'ID Admin est obligatoire.${NC}"
@@ -109,7 +110,7 @@ echo -e "${GR}[+] Création du répertoire TOM_TUNNEL BOT...${NC}"
 mkdir -p "$BOT_DIR"
 
 if [[ ! -d "$BOT_DIR" ]]; then
-    echo -e "${RD}[-] Impossible de créer $BOT_DIR${NC}"
+    echo -e "${RD}[-] Impossible de créer le répertoire du bot.${NC}"
     exit 1
 fi
 
@@ -136,25 +137,27 @@ chmod 600 "$CONFIG_FILE"
 echo -e "${GR}[+] Nettoyage des anciens fichiers temporaires...${NC}"
 
 rm -rf "$TEMP_DIR"
+rm -f "$GIT_LOG"
 
 # ==========================================================
-# TELECHARGEMENT DU DEPOT
+# TELECHARGEMENT DU MODULE
+# ==========================================================
+# L'URL du dépôt est volontairement masquée à l'utilisateur.
+# Les sorties Git sont également redirigées afin d'éviter
+# qu'une URL ou un nom de dépôt apparaisse à l'écran.
 # ==========================================================
 
-echo -e "${GR}[+] Téléchargement du moteur TOM B2 depuis le dépôt principal...${NC}"
-echo -e "${LN}    Dépôt : ${REPO_URL}${NC}"
+echo -e "${GR}[+] Téléchargement du moteur TOM B2...${NC}"
 
-if ! git clone --depth 1 "$REPO_URL" "$TEMP_DIR" >/tmp/tom_tunnel_git.log 2>&1; then
+if ! git clone --depth 1 "$REPO_URL" "$TEMP_DIR" >"$GIT_LOG" 2>&1; then
 
-    echo -e "${RD}[-] ERREUR : impossible de télécharger le dépôt principal.${NC}"
+    echo -e "${RD}[-] ERREUR : impossible de télécharger le module.${NC}"
     echo
-
-    if [[ -f /tmp/tom_tunnel_git.log ]]; then
-        echo -e "${RD}Détail :${NC}"
-        cat /tmp/tom_tunnel_git.log
-    fi
+    echo -e "${YL}[!] Vérifiez votre connexion Internet et réessayez.${NC}"
 
     rm -rf "$TEMP_DIR"
+    rm -f "$GIT_LOG"
+
     exit 1
 fi
 
@@ -165,16 +168,25 @@ fi
 echo -e "${GR}[+] Vérification du moteur TOM_TUNNEL BOT...${NC}"
 
 if [[ ! -d "$BOT_SOURCE" ]]; then
-    echo -e "${RD}[-] ERREUR : tom_tunnel_core_bot est introuvable.${NC}"
+
+    echo -e "${RD}[-] ERREUR : le module du bot est introuvable.${NC}"
     echo
-    echo -e "${YL}[!] Structure trouvée dans le dépôt :${NC}"
-    find "$TEMP_DIR" -maxdepth 2 -type d | head -50
+
+    echo -e "${YL}[!] Structure disponible :${NC}"
+
+    find "$TEMP_DIR" -maxdepth 2 -type d 2>/dev/null \
+        | sed "s|$TEMP_DIR|module|g" \
+        | head -50
+
     echo
+
     rm -rf "$TEMP_DIR"
+    rm -f "$GIT_LOG"
+
     exit 1
 fi
 
-echo -e "${GR}[✓] tom_tunnel_core_bot trouvé.${NC}"
+echo -e "${GR}[✓] Module TOM_TUNNEL BOT trouvé.${NC}"
 
 # ==========================================================
 # COPIE DES FICHIERS
@@ -202,7 +214,10 @@ fi
 
 if [[ ! -x "$VENV_DIR/bin/python" ]]; then
     echo -e "${RD}[-] ERREUR : environnement Python virtuel non créé.${NC}"
+
     rm -rf "$TEMP_DIR"
+    rm -f "$GIT_LOG"
+
     exit 1
 fi
 
@@ -217,10 +232,16 @@ echo -e "${GR}[+] Mise à jour de pip...${NC}"
 
 if [[ -f "$BOT_DIR/requirements.txt" ]]; then
 
-    echo -e "${GR}[+] Installation des dépendances de requirements.txt...${NC}"
+    echo -e "${GR}[+] Installation des dépendances Python...${NC}"
 
     if ! "$VENV_DIR/bin/pip" install -r "$BOT_DIR/requirements.txt"; then
+
         echo -e "${RD}[-] ERREUR lors de l'installation des dépendances.${NC}"
+        echo -e "${YL}[!] Vérifiez requirements.txt puis réessayez.${NC}"
+
+        rm -rf "$TEMP_DIR"
+        rm -f "$GIT_LOG"
+
         exit 1
     fi
 
@@ -229,10 +250,18 @@ else
     echo -e "${YL}[!] requirements.txt introuvable.${NC}"
     echo -e "${GR}[+] Installation des dépendances principales...${NC}"
 
-    "$VENV_DIR/bin/pip" install \
+    if ! "$VENV_DIR/bin/pip" install \
         pyTelegramBotAPI \
         psutil \
-        requests
+        requests; then
+
+        echo -e "${RD}[-] ERREUR lors de l'installation des dépendances.${NC}"
+
+        rm -rf "$TEMP_DIR"
+        rm -f "$GIT_LOG"
+
+        exit 1
+    fi
 
 fi
 
@@ -244,7 +273,6 @@ BOT_FILE="$BOT_DIR/tom_tunnel_bot.py"
 
 if [[ ! -f "$BOT_FILE" ]]; then
 
-    # Recherche automatique du fichier Python principal
     FOUND_BOT=$(find "$BOT_DIR" -maxdepth 2 -type f \
         \( -name "tom_tunnel_bot.py" \
         -o -name "bot.py" \
@@ -252,21 +280,32 @@ if [[ ! -f "$BOT_FILE" ]]; then
         | head -n 1)
 
     if [[ -n "$FOUND_BOT" ]]; then
+
         BOT_FILE="$FOUND_BOT"
+
     else
+
         echo -e "${RD}[-] ERREUR : aucun fichier Python principal du bot trouvé.${NC}"
         echo
         echo -e "${YL}Fichiers Python présents :${NC}"
-        find "$BOT_DIR" -type f -name "*.py"
+
+        find "$BOT_DIR" -type f -name "*.py" \
+            | sed "s|$BOT_DIR|module|g"
+
+        rm -rf "$TEMP_DIR"
+        rm -f "$GIT_LOG"
+
         exit 1
     fi
 fi
 
-echo -e "${GR}[✓] Moteur Python trouvé : $BOT_FILE${NC}"
+echo -e "${GR}[✓] Moteur Python trouvé.${NC}"
 
 # ==========================================================
 # PERMISSIONS
 # ==========================================================
+
+echo -e "${GR}[+] Configuration des permissions...${NC}"
 
 chmod -R 755 "$BOT_DIR"
 
@@ -317,7 +356,7 @@ chmod 644 /var/log/tom_tunnel_bot/bot.log
 # ==========================================================
 
 rm -rf "$TEMP_DIR"
-rm -f /tmp/tom_tunnel_git.log
+rm -f "$GIT_LOG"
 
 # ==========================================================
 # SYSTEMD
@@ -358,11 +397,12 @@ else
     echo -e "${RD}[!] ERREUR : LE BOT N'A PAS DÉMARRÉ.${NC}"
     echo -e "${RD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo
-    echo -e "${YL}Derniers logs :${NC}"
-    journalctl -u tom_tunnel_bot.service -n 30 --no-pager
+
+    echo -e "${YL}Le service a rencontré un problème au démarrage.${NC}"
+    echo -e "${YL}Utilisez la commande suivante pour consulter les détails :${NC}"
     echo
-    echo -e "${YL}Pour revoir les logs :${NC}"
-    echo -e "journalctl -u tom_tunnel_bot -f"
+    echo -e "${GR}journalctl -u tom_tunnel_bot -n 30 --no-pager${NC}"
+    echo
 
 fi
 
@@ -375,9 +415,14 @@ echo -e "${GR}[+] Configuration du Bot Telegram terminée.${NC}"
 echo
 
 if declare -F menu >/dev/null 2>&1; then
+
     read -p "Appuyez sur ENTRÉE pour retourner au menu."
+
     menu
+
 else
+
     echo -e "${YL}Le menu TOM_TUNNEL n'est pas chargé dans ce shell.${NC}"
     echo -e "${GR}Installation terminée.${NC}"
+
 fi
