@@ -1,141 +1,458 @@
 #!/bin/bash
-# ==============================================================================
-# Script d'installation et de déploiement corrigé - TOM-TUNNEL-PRO- / TOM BOT
-# Dépôt GitHub : https://github.com/ILYASSETOM55/TOM_TUNNEL.git
-# ==============================================================================
 
-set -e
+clear
 
-# Couleurs pour le terminal
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+# ==========================================================
+# TOM_TUNNEL BOT - INSTALLATEUR COMPLET
+# ==========================================================
 
-REPO_URL="https://github.com/RootNexTPro/nexTPro-ScriptAll.git"
-INSTALL_DIR="/opt/tom_tunnel_bot"
-CONFIG_DIR="/etc/tom_tunnel_bot"
-SERVICE_NAME="nexus_bot"
+LN='\e[36m'
+NC='\e[0m'
+BG='\e[44m'
+RD='\e[31m'
+GR='\e[32m'
+YL='\e[33m'
 
-echo -e "${BLUE}=====================================================${NC}"
-echo -e "${BLUE}        INSTALLATION DE TOM BOT / TOM_TUNNEL      ${NC}"
-echo -e "${BLUE}=====================================================${NC}"
+BOT_DIR="/etc/tom_tunnel_bot"
+TEMP_DIR="/tmp/tom_tunnel_bot_temp"
+REPO_URL="https://github.com/ILYASSETOM55/TOM_TUNNEL.git"
+BOT_SOURCE="${TEMP_DIR}/tom_tunnel_core_bot"
+CONFIG_FILE="${BOT_DIR}/config.json"
+VENV_DIR="${BOT_DIR}/venv"
+SERVICE_FILE="/etc/systemd/system/tom_tunnel_bot.service"
 
-# 1. Vérification des droits ROOT
-if [ "$EUID" -ne 0 ]; then
-  echo -e "${RED}[!] Erreur: Ce script doit être exécuté en tant que root (sudo bash install_bot.sh)${NC}"
-  exit 1
-fi
+# ==========================================================
+# HEADER
+# ==========================================================
 
-# 2. Saisie interactive des identifiants (avec validation)
-echo -e "${YELLOW}Ce module va relier votre serveur à Telegram.${NC}"
-read -rp " ➔ Entrez le TOKEN du Bot (ex: 1234:ABCDef...) : " BOT_TOKEN
-read -rp " ➔ Entrez votre ID Telegram (ex: 123456789) : " ADMIN_ID
+echo -e "${LN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
+echo -e "${LN}┃${NC}${BG}          INSTALLATION DE TOM_TUNNEL BOT          ${NC}${LN}┃${NC}"
+echo -e "${LN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
+echo
 
-if [ -z "$BOT_TOKEN" ] || [ -z "$ADMIN_ID" ]; then
-    echo -e "${RED}[!] Erreur: Le TOKEN et l'ID Admin ne peuvent pas être vides.${NC}"
+echo -e "${GR}Ce module va relier votre serveur à Telegram.${NC}"
+echo -e "${GR}Vous deviendrez le SUPER ADMIN du système.${NC}"
+echo
+
+# ==========================================================
+# ROOT
+# ==========================================================
+
+if [[ "$EUID" -ne 0 ]]; then
+    echo -e "${RD}[-] ERREUR : ce script doit être exécuté en root.${NC}"
     exit 1
 fi
 
-# 3. Installation des paquets système requis
-echo -e "${YELLOW}[+] Mise à jour du système et dépendances...${NC}"
-apt-get update -y > /dev/null 2>&1
-apt-get install -y python3 python3-pip python3-venv git curl jq > /dev/null 2>&1
+# ==========================================================
+# TOKEN
+# ==========================================================
 
-# 4. Préparation et nettoyage du répertoire cible
-echo -e "${YELLOW}[+] Préparation de l'environnement d'installation...${NC}"
-mkdir -p "$CONFIG_DIR"
+read -p " ➔ Entrez le TOKEN du Bot : " bot_token
 
-if [ -d "$INSTALL_DIR/.git" ]; then
-    echo -e "${YELLOW}[+] Mise à jour du code depuis GitHub...${NC}"
-    cd "$INSTALL_DIR"
-    git reset --hard
-    git pull origin main
-else
-    echo -e "${YELLOW}[+] Clonage du dépôt principal...${NC}"
-    rm -rf "$INSTALL_DIR"
-    git clone "$REPO_URL" "$INSTALL_DIR"
+if [[ -z "$bot_token" ]]; then
+    echo -e "${RD}[-] Erreur : le Token est obligatoire.${NC}"
+    exit 1
 fi
 
-# 5. Garantie d'intégrité de l'architecture Python (Fichiers __init__.py)
-mkdir -p "$INSTALL_DIR/bot/modules"
-touch "$INSTALL_DIR/bot/__init__.py"
-touch "$INSTALL_DIR/bot/modules/__init__.py"
+# ==========================================================
+# ADMIN ID
+# ==========================================================
 
-# Si le fichier main.py se trouve sous un autre dossier (ex: tom_tunnel_core_bot), création d'un lien d'entrée
-if [ ! -f "$INSTALL_DIR/bot/main.py" ]; then
-    if [ -f "$INSTALL_DIR/tom_tunnel_core_bot/main.py" ]; then
-        cp -r "$INSTALL_DIR/tom_tunnel_core_bot/"* "$INSTALL_DIR/bot/"
-    elif [ -f "$INSTALL_DIR/doty_bot_source/main.py" ]; then
-        cp -r "$INSTALL_DIR/doty_bot_source/"* "$INSTALL_DIR/bot/"
+read -p " ➔ Entrez votre ID Telegram : " admin_id
+
+if [[ -z "$admin_id" ]]; then
+    echo -e "${RD}[-] Erreur : l'ID Telegram est obligatoire.${NC}"
+    exit 1
+fi
+
+if ! [[ "$admin_id" =~ ^[0-9]+$ ]]; then
+    echo -e "${RD}[-] Erreur : l'ID Telegram doit être numérique.${NC}"
+    exit 1
+fi
+
+# ==========================================================
+# ARRET ANCIEN BOT
+# ==========================================================
+
+echo
+echo -e "${GR}[+] Arrêt de l'ancienne installation...${NC}"
+
+systemctl stop tom_tunnel_bot.service >/dev/null 2>&1
+systemctl disable tom_tunnel_bot.service >/dev/null 2>&1
+
+# ==========================================================
+# INSTALLATION PAQUETS
+# ==========================================================
+
+echo -e "${GR}[+] Préparation de l'environnement système...${NC}"
+
+export DEBIAN_FRONTEND=noninteractive
+
+apt-get update -y
+
+apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-venv \
+    git \
+    curl
+
+if ! command -v python3 >/dev/null 2>&1; then
+    echo -e "${RD}[-] Python3 n'est pas disponible.${NC}"
+    exit 1
+fi
+
+if ! command -v git >/dev/null 2>&1; then
+    echo -e "${RD}[-] Git n'est pas disponible.${NC}"
+    exit 1
+fi
+
+# ==========================================================
+# NETTOYAGE TEMPORAIRE
+# ==========================================================
+
+echo -e "${GR}[+] Nettoyage des anciens fichiers temporaires...${NC}"
+
+rm -rf "$TEMP_DIR"
+
+# ==========================================================
+# DOSSIER BOT
+# ==========================================================
+
+echo -e "${GR}[+] Création du dossier TOM_TUNNEL BOT...${NC}"
+
+mkdir -p "$BOT_DIR"
+
+# ==========================================================
+# CONFIGURATION
+# ==========================================================
+
+echo -e "${GR}[+] Création de la configuration Telegram...${NC}"
+
+cat > "$CONFIG_FILE" <<EOF
+{
+  "bot_token": "$bot_token",
+  "super_admin": $admin_id,
+  "admins": []
+}
+EOF
+
+chmod 600 "$CONFIG_FILE"
+
+# ==========================================================
+# TELECHARGEMENT DEPOT
+# ==========================================================
+
+echo -e "${GR}[+] Téléchargement du dépôt TOM_TUNNEL...${NC}"
+echo -e "${LN}${REPO_URL}${NC}"
+
+if ! git clone --depth 1 "$REPO_URL" "$TEMP_DIR"; then
+    echo
+    echo -e "${RD}[-] ERREUR : impossible de télécharger le dépôt.${NC}"
+    rm -rf "$TEMP_DIR"
+    exit 1
+fi
+
+echo -e "${GR}[✓] Dépôt téléchargé avec succès.${NC}"
+
+# ==========================================================
+# VERIFICATION MODULE BOT
+# ==========================================================
+
+echo -e "${GR}[+] Recherche du moteur TOM_TUNNEL BOT...${NC}"
+
+if [[ ! -d "$BOT_SOURCE" ]]; then
+
+    echo -e "${RD}[-] ERREUR : le dossier tom_tunnel_core_bot est introuvable.${NC}"
+
+    echo
+    echo -e "${YL}Structure trouvée :${NC}"
+
+    find "$TEMP_DIR" -maxdepth 2 -type d
+
+    rm -rf "$TEMP_DIR"
+    exit 1
+fi
+
+echo -e "${GR}[✓] tom_tunnel_core_bot trouvé.${NC}"
+
+# ==========================================================
+# COPIE DES FICHIERS
+# ==========================================================
+
+echo -e "${GR}[+] Copie des fichiers du bot...${NC}"
+
+rm -rf "$BOT_DIR/modules"
+
+cp -a "$BOT_SOURCE/." "$BOT_DIR/"
+
+# ==========================================================
+# VERIFICATION FICHIER PRINCIPAL
+# ==========================================================
+
+BOT_FILE="$BOT_DIR/tom_tunnel_bot.py"
+
+if [[ ! -f "$BOT_FILE" ]]; then
+
+    FOUND_BOT=$(find "$BOT_DIR" -maxdepth 2 -type f \
+        \( -name "tom_tunnel_bot.py" \
+        -o -name "bot.py" \
+        -o -name "main.py" \) \
+        | head -n 1)
+
+    if [[ -n "$FOUND_BOT" ]]; then
+        BOT_FILE="$FOUND_BOT"
     fi
 fi
 
-# 6. Environnement virtuel isolatif (VENV)
-echo -e "${YELLOW}[+] Configuration de l'environnement virtuel Python...${NC}"
-python3 -m venv "$INSTALL_DIR/venv"
-"$INSTALL_DIR/venv/bin/pip" install --upgrade pip > /dev/null 2>&1
+if [[ ! -f "$BOT_FILE" ]]; then
 
-if [ -f "$INSTALL_DIR/requirements.txt" ]; then
-    "$INSTALL_DIR/venv/bin/pip" install -r "$INSTALL_DIR/requirements.txt" > /dev/null 2>&1
-else
-    "$INSTALL_DIR/venv/bin/pip" install "python-telegram-bot>=20.0,<21.0" requests psutil python-dotenv > /dev/null 2>&1
+    echo -e "${RD}[-] ERREUR : fichier principal du bot introuvable.${NC}"
+
+    echo
+    echo -e "${YL}Fichiers Python disponibles :${NC}"
+    find "$BOT_DIR" -type f -name "*.py"
+
+    exit 1
 fi
 
-# 7. Génération de la configuration JSON sécurisée
-echo -e "${YELLOW}[+] Sauvegarde de la configuration dans $CONFIG_DIR...${NC}"
-PUBLIC_IP=$(curl -s ifconfig.me || echo "127.0.0.1")
+echo -e "${GR}[✓] Fichier principal : $BOT_FILE${NC}"
 
-cat <<EOF > "$CONFIG_DIR/config.json"
-{
-  "bot_token": "$BOT_TOKEN",
-  "admin_id": "$ADMIN_ID",
-  "vps_ip": "$PUBLIC_IP"
-}
-EOF
-chmod 600 "$CONFIG_DIR/config.json"
+# ==========================================================
+# ENVIRONNEMENT VIRTUEL PYTHON
+# ==========================================================
 
-# 8. Alignement et configuration du Service Systemd (Corrigé)
-echo -e "${YELLOW}[+] Configuration et alignement du Démon système ($SERVICE_NAME)...${NC}"
+echo -e "${GR}[+] Création de l'environnement Python...${NC}"
 
-cat <<EOF > /etc/systemd/system/${SERVICE_NAME}.service
+rm -rf "$VENV_DIR"
+
+python3 -m venv "$VENV_DIR"
+
+if [[ ! -x "$VENV_DIR/bin/python" ]]; then
+    echo -e "${RD}[-] ERREUR : impossible de créer le venv.${NC}"
+    exit 1
+fi
+
+# ==========================================================
+# PIP
+# ==========================================================
+
+echo -e "${GR}[+] Préparation de pip...${NC}"
+
+"$VENV_DIR/bin/python" -m pip install --upgrade pip setuptools wheel
+
+# ==========================================================
+# DEPENDANCES OBLIGATOIRES
+# ==========================================================
+
+echo -e "${GR}[+] Installation des dépendances TOM_TUNNEL...${NC}"
+
+"$VENV_DIR/bin/python" -m pip install \
+    psutil \
+    requests \
+    pyTelegramBotAPI
+
+if [[ $? -ne 0 ]]; then
+    echo -e "${RD}[-] ERREUR : installation des dépendances principales échouée.${NC}"
+    exit 1
+fi
+
+# ==========================================================
+# REQUIREMENTS.TXT
+# ==========================================================
+
+if [[ -f "$BOT_DIR/requirements.txt" ]]; then
+
+    echo -e "${GR}[+] Installation de requirements.txt...${NC}"
+
+    if ! "$VENV_DIR/bin/python" -m pip install \
+        -r "$BOT_DIR/requirements.txt"; then
+
+        echo -e "${RD}[-] ERREUR : requirements.txt contient une dépendance impossible à installer.${NC}"
+        exit 1
+    fi
+
+else
+
+    echo -e "${YL}[!] requirements.txt absent.${NC}"
+    echo -e "${GR}[+] Les dépendances principales ont quand même été installées.${NC}"
+
+fi
+
+# ==========================================================
+# TEST PSUTIL
+# ==========================================================
+
+echo -e "${GR}[+] Vérification de psutil...${NC}"
+
+if ! "$VENV_DIR/bin/python" -c "import psutil"; then
+
+    echo -e "${RD}[-] ERREUR : psutil n'est pas installé dans le venv.${NC}"
+    exit 1
+fi
+
+echo -e "${GR}[✓] psutil fonctionne correctement.${NC}"
+
+# ==========================================================
+# TEST REQUESTS
+# ==========================================================
+
+echo -e "${GR}[+] Vérification de requests...${NC}"
+
+if ! "$VENV_DIR/bin/python" -c "import requests"; then
+
+    echo -e "${RD}[-] ERREUR : requests n'est pas installé.${NC}"
+    exit 1
+fi
+
+echo -e "${GR}[✓] requests fonctionne correctement.${NC}"
+
+# ==========================================================
+# TEST TELEBOT
+# ==========================================================
+
+echo -e "${GR}[+] Vérification de pyTelegramBotAPI...${NC}"
+
+if ! "$VENV_DIR/bin/python" -c "import telebot"; then
+
+    echo -e "${RD}[-] ERREUR : pyTelegramBotAPI n'est pas installé.${NC}"
+    exit 1
+fi
+
+echo -e "${GR}[✓] Telegram API fonctionne correctement.${NC}"
+
+# ==========================================================
+# TEST IMPORTS TOM_TUNNEL
+# ==========================================================
+
+echo -e "${GR}[+] Vérification des modules TOM_TUNNEL...${NC}"
+
+cd "$BOT_DIR"
+
+if ! "$VENV_DIR/bin/python" -c "
+import sys
+sys.path.insert(0, '$BOT_DIR')
+
+import psutil
+import requests
+import telebot
+
+from modules import system_core
+print('IMPORTS_OK')
+"; then
+
+    echo -e "${RD}[-] ERREUR : un module TOM_TUNNEL ne peut pas être chargé.${NC}"
+    echo
+    echo -e "${YL}Vérifiez les fichiers Python avec :${NC}"
+    echo -e "find $BOT_DIR -type f -name '*.py'"
+    exit 1
+fi
+
+echo -e "${GR}[✓] Modules TOM_TUNNEL chargés correctement.${NC}"
+
+# ==========================================================
+# PERMISSIONS
+# ==========================================================
+
+echo -e "${GR}[+] Configuration des permissions...${NC}"
+
+chmod -R 755 "$BOT_DIR"
+chmod 600 "$CONFIG_FILE"
+
+mkdir -p /var/log/tom_tunnel_bot
+
+touch /var/log/tom_tunnel_bot/bot.log
+
+chmod 755 /var/log/tom_tunnel_bot
+chmod 644 /var/log/tom_tunnel_bot/bot.log
+
+# ==========================================================
+# SERVICE SYSTEMD
+# ==========================================================
+
+echo -e "${GR}[+] Création du service systemd...${NC}"
+
+cat > "$SERVICE_FILE" <<EOF
 [Unit]
-Description=TOM_TUNNEL B2 Telegram Bot Service
-After=network.target
+Description=TOM_TUNNEL Telegram Bot
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=$INSTALL_DIR
-ExecStart=$INSTALL_DIR/venv/bin/python3 $INSTALL_DIR/bot/main.py
+WorkingDirectory=$BOT_DIR
+
+ExecStart=$VENV_DIR/bin/python $BOT_FILE
+
 Restart=always
-RestartSec=5
+RestartSec=3
+
 Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=$INSTALL_DIR
+
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# 9. Démarrage et contrôle de santé du service
+# ==========================================================
+# NETTOYAGE
+# ==========================================================
+
+rm -rf "$TEMP_DIR"
+
+# ==========================================================
+# SYSTEMD
+# ==========================================================
+
+echo -e "${GR}[+] Activation du service TOM_TUNNEL BOT...${NC}"
+
 systemctl daemon-reload
-systemctl enable ${SERVICE_NAME}.service > /dev/null 2>&1
-systemctl restart ${SERVICE_NAME}.service
 
-echo -e "${YELLOW}[+] Vérification du statut du service...${NC}"
-sleep 3
+systemctl enable tom_tunnel_bot.service
 
-if systemctl is-active --quiet ${SERVICE_NAME}.service; then
-    echo -e "${GREEN}=====================================================${NC}"
-    echo -e "${GREEN}   Configuration du Bot Telegram complétée !         ${NC}"
-    echo -e "${GREEN}=====================================================${NC}"
-    echo -e " Allez sur Telegram et tapez /start avec le bot"
-    echo -e " Votre ID Admin: ${GREEN}$ADMIN_ID${NC}"
+systemctl restart tom_tunnel_bot.service
+
+sleep 4
+
+# ==========================================================
+# VERIFICATION SERVICE
+# ==========================================================
+
+if systemctl is-active --quiet tom_tunnel_bot.service; then
+
+    echo
+    echo -e "${GR}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
+    echo -e "${GR}┃        ✓ TOM_TUNNEL BOT ACTIVÉ                  ┃${NC}"
+    echo -e "${GR}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
+    echo
+    echo -e "${GR}[✓] Service : ACTIF${NC}"
+    echo -e "${GR}[✓] Admin   : $admin_id${NC}"
+    echo -e "${GR}[✓] Dossier : $BOT_DIR${NC}"
+    echo
+    echo -e "${GR}➡ Allez sur Telegram et envoyez /start${NC}"
+
 else
-    echo -e "${RED}[!] Erreur: Le bot n'a pas pu démarrer.${NC}"
-    echo -e "${RED}[!] Log des erreurs récents :${NC}"
-    journalctl -u ${SERVICE_NAME}.service -n 15 --no-pager
+
+    echo
+    echo -e "${RD}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
+    echo -e "${RD}┃       ✗ ÉCHEC DU DÉMARRAGE DU BOT              ┃${NC}"
+    echo -e "${RD}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
+    echo
+
+    echo -e "${YL}Derniers logs :${NC}"
+
+    journalctl -u tom_tunnel_bot.service -n 40 --no-pager
+
+    echo
+    echo -e "${YL}Commande pour suivre les logs :${NC}"
+    echo -e "journalctl -u tom_tunnel_bot -f"
+
     exit 1
 fi
 
+echo
+echo -e "${GR}[+] Installation terminée.${NC}"
+echo
