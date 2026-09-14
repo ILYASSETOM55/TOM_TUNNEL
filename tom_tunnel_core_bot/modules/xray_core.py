@@ -1,210 +1,334 @@
 import base64
+import html
 import json
 import os
 import re
+import shutil
 import subprocess
+import urllib.request
 import uuid
 from datetime import datetime, timedelta
+from pathlib import Path
 
-XRAY_CONF = "/etc/xray/config.json"
-DB_DIR = "/etc/tom_tunnel_bot/xray_accounts"
-WEB_CONFIG = "/etc/nexus-tunnel-web/config.json"
-PROTOCOLS = {"vless", "vmess", "trojan", "socks"}
+XRAY_CONF = Path("/etc/xray/config.json")
+DB_DIR = Path("/etc/tom_tunnel_bot/xray_accounts")
+LEGACY_DB_DIR = Path("/etc/tom_tunnel_bot/xray_accounts")
+WEB_CONFIG = Path("/etc/tom_tunnel_web/config.json")
+VALID_PROTOCOLS = {"vless", "vmess", "trojan", "socks"}
+USER_RE = re.compile(r"^[A-Za-z0-9._-]{1,32}$")
+
+MARKERS = {
+    "vless": ("#vless", "#vlessgrpc"),
+    "vmess": ("#vmess", "#vmessgrpc"),
+    "trojan": ("#trojanws", "#trojangrpc"),
+    "socks": ("#ssws", "#ssgrpc"),
+}
+PREFIX = {"vless": "#&", "vmess": "###", "trojan": "#!", "socks": "#@"}
+
+
+def _esc(v):
+    return html.escape(str(v if v is not None else ""), quote=False)
+
+
+def _run(args, timeout=30):
+    try:
+        return subprocess.run(args, text=True, capture_output=True, timeout=timeout, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
 
 def get_domain():
     try:
-        return open("/etc/xray/domain", encoding="utf-8").read().strip()
-    except Exception:
+        value = Path("/etc/xray/domain").read_text(encoding="utf-8").strip()
+        return value or "votre-domaine.com"
+    except OSError:
         return "votre-domaine.com"
 
-def _valid_user(user):
-    return bool(re.fullmatch(r"[A-Za-z0-9._-]{1,32}", user or ""))
 
-def _sync_web(user, protocol, client_id, expiry):
+def _valid(protocol, user):
+    return protocol in VALID_PROTOCOLS and bool(USER_RE.fullmatch((user or "").strip()))
+
+
+def _db_dir():
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    return DB_DIR
+
+
+def _db_path(protocol, user):
+    return _db_dir() / f"{protocol}_{user}.txt"
+
+
+def _legacy_path(protocol, user):
+    return LEGACY_DB_DIR / f"{protocol}_{user}.txt"
+
+
+def _find_db(protocol, user):
+    for path in (_db_path(protocol, user), _legacy_path(protocol, user)):
+        if path.is_file():
+            return path
+    return None
+
+
+def _write_db(protocol, user, data):
+    path = _db_path(protocol, user)
+    content = "".join(f"{k}={v}\n" for k, v in data.items())
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(content, encoding="utf-8")
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+
+
+def _read_db(path):
+    data = {}
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if "=" in line:
+                k, v = line.split("=", 1)
+                data[k] = v
+    except OSError:
+        return {}
+    return data
+
+
+def _sync_web(user, password, protocol, expiry, client_id):
     try:
         port = 2087
-        try:
-            with open(WEB_CONFIG, encoding="utf-8") as f:
+        if WEB_CONFIG.is_file():
+            with WEB_CONFIG.open(encoding="utf-8") as f:
                 port = int(json.load(f).get("port", port))
-        except Exception:
-            pass
-        import urllib.request
-        data = json.dumps({
-            "username": user, "protocol": protocol,
-            "password": client_id, "expiry": expiry, "uuid": client_id
-        }).encode()
-        req = urllib.request.Request(
-            f"http://127.0.0.1:{port}/api/clients/sync",
-            data=data, method="POST",
-            headers={"Content-Type": "application/json"}
-        )
-        urllib.request.urlopen(req, timeout=2).read()
+        payload = json.dumps({"username": user, "protocol": protocol, "password": password, "expiry": expiry, "uuid": client_id}).encode()
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/clients/sync", data=payload, method="POST", headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=2) as response:
+            response.read()
     except Exception:
         pass
 
-def _links(protocol, user, client_id, domain):
+
+def _valid_days(days):
+    try:
+        n = int(str(days).strip())
+        return n if 1 <= n <= 3650 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _insert_client(protocol, user, expiry, client_id):
+    if not XRAY_CONF.is_file():
+        return False, "Fichier config Xray introuvable."
+    markers = MARKERS[protocol]
+    prefix = PREFIX[protocol]
+    lines = XRAY_CONF.read_text(encoding="utf-8").splitlines(True)
+    # Refuse duplicates by our metadata comments.
+    user_re = re.compile(rf"^\s*{re.escape(prefix)}\s+{re.escape(user)}\s+")
+    if any(user_re.search(line) for line in lines):
+        return False, "Cet utilisateur existe déjà dans la configuration Xray."
+
+    if protocol == "vless":
+        client_line = f'}},{{"id": "{client_id}","email": "{user}"\n'
+    elif protocol == "vmess":
+        client_line = f'}},{{"id": "{client_id}","alterId": 0,"email": "{user}"\n'
+    elif protocol == "trojan":
+        client_line = f'}},{{"password": "{client_id}","email": "{user}"\n'
+    else:
+        client_line = f'}},{{"password": "{client_id}","method": "aes-128-gcm","email": "{user}"\n'
+
+    out = []
+    injected = 0
+    for line in lines:
+        out.append(line)
+        marker = line.strip()
+        if marker in markers:
+            out.append(f"{prefix} {user} {expiry} {client_id}\n")
+            out.append(client_line)
+            injected += 1
+
+    if injected == 0:
+        return False, f"Balises {protocol.upper()} introuvables dans /etc/xray/config.json."
+
+    backup = XRAY_CONF.with_suffix(".json.bot.bak")
+    shutil.copy2(XRAY_CONF, backup)
+    XRAY_CONF.write_text("".join(out), encoding="utf-8")
+    result = _run(["xray", "run", "-test", "-config", str(XRAY_CONF)], timeout=20)
+    if not result or result.returncode != 0:
+        shutil.copy2(backup, XRAY_CONF)
+        return False, f"Configuration Xray invalide : {_esc((result.stderr if result else 'test indisponible').strip()[-1200:])}"
+    restart = _run(["systemctl", "restart", "xray"], timeout=30)
+    if not restart or restart.returncode != 0:
+        shutil.copy2(backup, XRAY_CONF)
+        _run(["systemctl", "restart", "xray"], timeout=30)
+        return False, "Xray n'a pas pu redémarrer. Configuration restaurée."
+    return True, "OK"
+
+
+def _links(protocol, user, client_id):
+    domain = get_domain()
     if protocol == "vless":
         return (
             f"vless://{client_id}@{domain}:443?path=/vless&security=tls&encryption=none&type=ws#{user}",
-            f"vless://{client_id}@{domain}:80?path=/vless&encryption=none&type=ws#{user}",
-            f"vless://{client_id}@{domain}:443?mode=gun&security=tls&encryption=none&type=grpc&serviceName=vless-grpc#{user}"
+            f"vless://{client_id}@{domain}:80?path=/vless&security=none&encryption=none&type=ws#{user}",
+            f"vless://{client_id}@{domain}:443?mode=gun&security=tls&encryption=none&type=grpc&serviceName=vless-grpc#{user}",
         )
     if protocol == "vmess":
-        a = json.dumps({"v":"2","ps":user,"add":domain,"port":"443","id":client_id,"aid":"0","net":"ws","path":"/vmess","type":"none","host":"","tls":"tls"}, separators=(",",":"))
-        b = json.dumps({"v":"2","ps":user,"add":domain,"port":"80","id":client_id,"aid":"0","net":"ws","path":"/vmess","type":"none","host":"","tls":"none"}, separators=(",",":"))
-        c = json.dumps({"v":"2","ps":user,"add":domain,"port":"443","id":client_id,"aid":"0","net":"grpc","path":"vmess-grpc","type":"none","host":"","tls":"tls"}, separators=(",",":"))
-        return tuple("vmess://" + base64.b64encode(x.encode()).decode() for x in (a,b,c))
+        def enc(port, tls, net="ws"):
+            path = "/vmess" if net == "ws" else "vmess-grpc"
+            obj = {"v":"2","ps":user,"add":domain,"port":str(port),"id":client_id,"aid":"0","net":net,"path":path,"type":"none","host":"","tls":tls}
+            return "vmess://" + base64.b64encode(json.dumps(obj, separators=(",", ":")).encode()).decode()
+        return enc(443, "tls"), enc(80, "none"), enc(443, "tls", "grpc")
     if protocol == "trojan":
         return (
-            f"trojan://{client_id}@{domain}:443?path=/trws&security=tls&encryption=none&host={domain}&type=ws#{user}",
-            f"trojan://{client_id}@{domain}:80?path=/trws&encryption=none&security=none&host={domain}&type=ws#{user}",
-            f"trojan://{client_id}@{domain}:443?mode=gun&security=tls&type=grpc&serviceName=trojan-grpc&sni={domain}#{user}"
+            f"trojan://{client_id}@{domain}:443?path=/trws&security=tls&type=ws&sni={domain}#{user}",
+            f"trojan://{client_id}@{domain}:80?path=/trws&security=none&type=ws&host={domain}#{user}",
+            f"trojan://{client_id}@{domain}:443?mode=gun&security=tls&type=grpc&serviceName=trojan-grpc&sni={domain}#{user}",
         )
-    if protocol == "socks":
-        link = f"socks5://{user}:{client_id}@{domain}:1080"
-        return link, link, link
-    raise ValueError("Protocole inconnu")
+    raw = base64.b64encode(f"aes-128-gcm:{client_id}".encode()).decode().rstrip("=")
+    return (
+        f"ss://{raw}@{domain}:443?path=ss-ws&security=tls&type=ws&sni={domain}#{user}",
+        f"ss://{raw}@{domain}:80?path=ss-ws&security=none&type=ws#{user}",
+        f"ss://{raw}@{domain}:443?mode=gun&security=tls&type=grpc&serviceName=ss-grpc&sni={domain}#{user}",
+    )
+
+
+def _format(protocol, user, client_id, expiry):
+    domain = get_domain()
+    a, b, c = _links(protocol, user, client_id)
+    return (
+        f"┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n┃ <b>{protocol.upper()} ACCOUNT</b>\n┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n"
+        f"👤 <b>Username:</b> <code>{_esc(user)}</code>\n📅 <b>Expiry:</b> <code>{expiry}</code>\n"
+        f"🔑 <b>UUID/Password:</b> <code>{_esc(client_id)}</code>\n🌐 <b>Domain:</b> <code>{_esc(domain)}</code>\n\n"
+        f"🔗 <b>TLS:</b>\n<code>{_esc(a)}</code>\n\n🔗 <b>NTLS:</b>\n<code>{_esc(b)}</code>\n\n🔗 <b>gRPC:</b>\n<code>{_esc(c)}</code>"
+    )
+
 
 def create_xray_account(protocol, user, days, created_by_id=None):
-    protocol = protocol.lower()
-    if protocol not in PROTOCOLS:
-        return False, "❌ Protocole Xray invalide."
-    if not _valid_user(user):
-        return False, "❌ Nom d'utilisateur invalide."
-    if not os.path.exists(XRAY_CONF):
-        return False, "❌ Fichier config Xray introuvable."
-    try:
-        days = int(days)
-        if days <= 0: raise ValueError
-    except ValueError:
-        return False, "❌ La durée doit être un nombre positif."
-
+    protocol = str(protocol or "").lower().strip()
+    user = str(user or "").strip()
+    if not _valid(protocol, user):
+        return False, "❌ Protocole ou nom d'utilisateur invalide."
+    day_count = _valid_days(days)
+    if day_count is None:
+        return False, "❌ La durée doit être comprise entre 1 et 3650 jours."
+    if _find_db(protocol, user):
+        return False, f"❌ Le compte <code>{_esc(user)}</code> existe déjà."
+    expiry = (datetime.now() + timedelta(days=day_count)).strftime("%Y-%m-%d")
     client_id = str(uuid.uuid4())
-    expiry = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d")
-    lines = open(XRAY_CONF, encoding="utf-8").readlines()
-    markers = {
-        "vless": ("#vless", "#vlessgrpc"),
-        "vmess": ("#vmess", "#vmessgrpc"),
-        "trojan": ("#trojanws", "#trojangrpc"),
-        "socks": ("#socks",)
-    }
-    new = []
-    injected = False
-    for line in lines:
-        new.append(line)
-        clean = line.strip()
-        if clean in markers[protocol]:
-            injected = True
-            if protocol == "vless":
-                new += [f"#& {user} {expiry} {client_id}\n", f'}},{{"id": "{client_id}","email": "{user}"\n']
-            elif protocol == "vmess":
-                new += [f"### {user} {expiry} {client_id}\n", f'}},{{"id": "{client_id}","alterId": 0,"email": "{user}"\n']
-            elif protocol == "trojan":
-                new += [f"#! {user} {expiry} {client_id}\n", f'}},{{"password": "{client_id}","email": "{user}"\n']
-            else:
-                new += [f"## {user} {expiry} {client_id}\n", f'}},{{"user": "{user}","pass": "{client_id}"\n']
-            break
-    if not injected:
-        return False, f"❌ Balise Xray pour {protocol.upper()} introuvable."
-    # Keep the remainder of the original config after the marker.
-    idx = next(i for i,l in enumerate(lines) if l.strip() in markers[protocol])
-    new.extend(lines[idx+1:])
-    with open(XRAY_CONF, "w", encoding="utf-8") as f:
-        f.writelines(new)
-    subprocess.run(["systemctl", "restart", "xray"], capture_output=True)
+    ok, message = _insert_client(protocol, user, expiry, client_id)
+    if not ok:
+        return False, f"❌ {message}"
+    try:
+        _write_db(protocol, user, {"username": user, "uuid": client_id, "expiry": expiry, "createdById": created_by_id or "", "createdAt": datetime.utcnow().replace(microsecond=0).isoformat()+"Z", "protocol": protocol, "status": "active"})
+    except OSError as exc:
+        return False, f"⚠️ Compte Xray créé mais métadonnées impossibles à écrire : <code>{_esc(exc)}</code>"
+    _sync_web(user, client_id, protocol, expiry, client_id)
+    return True, _format(protocol, user, client_id, expiry)
 
-    os.makedirs(DB_DIR, exist_ok=True)
-    with open(f"{DB_DIR}/{protocol}_{user}.txt", "w", encoding="utf-8") as f:
-        f.write(
-            f"username={user}\nuuid={client_id}\nexpiry={expiry}\n"
-            f"createdById={created_by_id}\ncreatedAt={datetime.utcnow().isoformat()}Z\n"
-            f"protocol={protocol}\nstatus=active\n"
-        )
-    _sync_web(user, protocol, client_id, expiry)
-    a,b,c = _links(protocol, user, client_id, get_domain())
-    return True, (
-        f"┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n┃ <b>{protocol.upper()} ACCOUNT</b>\n┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n"
-        f"👤 <b>Username:</b> <code>{user}</code>\n"
-        f"⏳ <b>Expiry:</b> <code>{expiry}</code>\n"
-        f"🔑 <b>UUID/Pass:</b> <code>{client_id}</code>\n\n"
-        f"🔗 <b>TLS:</b>\n<code>{a}</code>\n\n"
-        f"🔗 <b>NTLS:</b>\n<code>{b}</code>\n\n"
-        f"🔗 <b>GRPC:</b>\n<code>{c}</code>"
-    )
 
 def get_xray_usernames(protocol):
-    if not os.path.isdir(DB_DIR):
+    protocol = str(protocol or "").lower()
+    if protocol not in VALID_PROTOCOLS:
         return []
-    prefix = protocol + "_"
-    return [f[len(prefix):-4] for f in sorted(os.listdir(DB_DIR)) if f.startswith(prefix) and f.endswith(".txt")]
+    names = set()
+    for directory in (DB_DIR, LEGACY_DB_DIR):
+        if directory.is_dir():
+            prefix = protocol + "_"
+            for path in directory.glob(prefix + "*.txt"):
+                user = path.stem[len(prefix):]
+                if _valid(protocol, user):
+                    names.add(user)
+    return sorted(names)
+
 
 def get_xray_account_details(protocol, user):
-    path = f"{DB_DIR}/{protocol}_{user}.txt"
-    if not os.path.exists(path):
-        return False, f"❌ Compte {protocol.upper()} <code>{user}</code> introuvable."
-    data = {}
-    for line in open(path, encoding="utf-8"):
-        if "=" in line:
-            k,v=line.rstrip().split("=",1); data[k]=v
-    a,b,c = _links(protocol, user, data.get("uuid","N/A"), get_domain())
-    return True, (
-        f"┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n┃ <b>{protocol.upper()} ACCOUNT</b>\n┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n"
-        f"👤 <b>Username:</b> <code>{user}</code>\n"
-        f"⏳ <b>Expiry:</b> <code>{data.get('expiry','N/A')}</code>\n"
-        f"🔑 <b>UUID/Pass:</b> <code>{data.get('uuid','N/A')}</code>\n\n"
-        f"🔗 <b>TLS:</b>\n<code>{a}</code>\n\n🔗 <b>NTLS:</b>\n<code>{b}</code>\n\n🔗 <b>GRPC:</b>\n<code>{c}</code>"
-    )
+    protocol = str(protocol or "").lower().strip()
+    user = str(user or "").strip()
+    if not _valid(protocol, user):
+        return False, "❌ Données invalides."
+    path = _find_db(protocol, user)
+    if not path:
+        return False, f"❌ Compte {protocol.upper()} <code>{_esc(user)}</code> introuvable."
+    data = _read_db(path)
+    return True, _format(protocol, user, data.get("uuid", "N/A"), data.get("expiry", "N/A"))
+
 
 def renew_xray_account(protocol, user, days):
-    path = f"{DB_DIR}/{protocol}_{user}.txt"
-    if not os.path.exists(path):
-        return False, f"❌ Compte {protocol.upper()} <code>{user}</code> introuvable."
-    try: days=int(days)
-    except ValueError: return False, "❌ Durée invalide."
-    data = {}
-    for line in open(path, encoding="utf-8"):
-        if "=" in line:
-            k,v=line.rstrip().split("=",1); data[k]=v
+    protocol = str(protocol or "").lower().strip()
+    user = str(user or "").strip()
+    if not _valid(protocol, user):
+        return False, "❌ Données invalides."
+    path = _find_db(protocol, user)
+    if not path:
+        return False, f"❌ Compte {protocol.upper()} <code>{_esc(user)}</code> introuvable."
+    day_count = _valid_days(days)
+    if day_count is None:
+        return False, "❌ La durée doit être comprise entre 1 et 3650 jours."
+    data = _read_db(path)
+    current = data.get("expiry")
     try:
-        base=datetime.strptime(data.get("expiry",""),"%Y-%m-%d")
-        if base < datetime.now(): base=datetime.now()
+        base = datetime.strptime(current, "%Y-%m-%d") if current else datetime.now()
+        if base < datetime.now(): base = datetime.now()
     except ValueError:
-        base=datetime.now()
-    new_exp=(base+timedelta(days=days)).strftime("%Y-%m-%d")
-    lines=open(path,encoding="utf-8").readlines()
-    with open(path,"w",encoding="utf-8") as f:
-        for line in lines:
-            f.write(f"expiry={new_exp}\n" if line.startswith("expiry=") else line)
-    if os.path.exists(XRAY_CONF):
-        content=open(XRAY_CONF,encoding="utf-8").read()
-        content=re.sub(
-            rf'((?:#[&!]|###+)\s+{re.escape(user)}\s+)\S+(\s)',
-            rf'\g<1>{new_exp}\2', content
-        )
-        open(XRAY_CONF,"w",encoding="utf-8").write(content)
-        subprocess.run(["systemctl","restart","xray"],capture_output=True)
-    return True, f"✅ <b>COMPTE {protocol.upper()} RENOUVELÉ</b>\n📅 Nouvelle expiration : <code>{new_exp}</code>"
+        base = datetime.now()
+    new_expiry = (base + timedelta(days=day_count)).strftime("%Y-%m-%d")
+    pattern = re.compile(rf"^(\s*{re.escape(PREFIX[protocol])}\s+{re.escape(user)}\s+)\S+(\s+\S+\s*)$", re.MULTILINE)
+    content = XRAY_CONF.read_text(encoding="utf-8") if XRAY_CONF.is_file() else ""
+    new_content, count = pattern.subn(rf"\g<1>{new_expiry}\2", content)
+    if count == 0:
+        return False, f"❌ Entrée {protocol.upper()} de <code>{_esc(user)}</code> introuvable dans Xray."
+    backup = XRAY_CONF.with_suffix(".json.bot.bak")
+    shutil.copy2(XRAY_CONF, backup)
+    XRAY_CONF.write_text(new_content, encoding="utf-8")
+    test = _run(["xray", "run", "-test", "-config", str(XRAY_CONF)], timeout=20)
+    if not test or test.returncode != 0:
+        shutil.copy2(backup, XRAY_CONF)
+        return False, "❌ Nouvelle configuration Xray invalide. Configuration restaurée."
+    restart = _run(["systemctl", "restart", "xray"], timeout=30)
+    if not restart or restart.returncode != 0:
+        shutil.copy2(backup, XRAY_CONF)
+        _run(["systemctl", "restart", "xray"], timeout=30)
+        return False, "❌ Xray n'a pas redémarré. Configuration restaurée."
+    data["expiry"] = new_expiry
+    _write_db(protocol, user, data)
+    _sync_web(user, data.get("uuid", ""), protocol, new_expiry, data.get("uuid", ""))
+    return True, f"✅ <b>{protocol.upper()} RENOUVELÉ</b>\n👤 <code>{_esc(user)}</code>\n📅 <code>{new_expiry}</code>"
+
 
 def delete_xray_account(protocol, user):
-    if not os.path.exists(XRAY_CONF):
+    protocol = str(protocol or "").lower().strip()
+    user = str(user or "").strip()
+    if not _valid(protocol, user):
+        return False, "❌ Données invalides."
+    if not XRAY_CONF.is_file():
         return False, "❌ Fichier config Xray introuvable."
-    content=open(XRAY_CONF,encoding="utf-8").read().splitlines(True)
-    new=[]; skip=False; removed=False
-    for line in content:
-        if re.match(rf'^(?:#[&!]|###+)\s+{re.escape(user)}\s+', line.strip()):
-            skip=True; removed=True; continue
-        if skip:
-            skip=False; continue
-        new.append(line)
-    if not removed:
-        return False, f"❌ Utilisateur <code>{user}</code> introuvable dans Xray."
-    open(XRAY_CONF,"w",encoding="utf-8").writelines(new)
-    subprocess.run(["systemctl","restart","xray"],capture_output=True)
-    path=f"{DB_DIR}/{protocol}_{user}.txt"
-    if os.path.exists(path): os.remove(path)
-    return True, f"🗑️ <b>Compte {protocol.upper()} <code>{user}</code> supprimé.</b>"
-
-def list_xray_accounts(protocol):
-    users=get_xray_usernames(protocol)
-    if not users: return f"📋 Aucun compte {protocol.upper()} trouvé."
-    return f"📋 <b>LISTE {protocol.upper()}</b>\n\n" + "\n".join(f"👤 <code>{u}</code>" for u in users) + f"\n\n📊 Total: {len(users)}"
+    prefix = PREFIX[protocol]
+    marker = re.compile(rf"^\s*{re.escape(prefix)}\s+{re.escape(user)}\s+\S+\s+\S+\s*\n?", re.MULTILINE)
+    content = XRAY_CONF.read_text(encoding="utf-8")
+    matches = list(marker.finditer(content))
+    if not matches:
+        return False, f"❌ Utilisateur <code>{_esc(user)}</code> introuvable dans Xray."
+    # Each marker is immediately followed by the generated client object line.
+    spans = []
+    for match in matches:
+        end = match.end()
+        next_nl = content.find("\n", end)
+        if next_nl >= 0:
+            end = next_nl + 1
+        spans.append((match.start(), end))
+    new_content = content
+    for start, end in reversed(spans):
+        new_content = new_content[:start] + new_content[end:]
+    backup = XRAY_CONF.with_suffix(".json.bot.bak")
+    shutil.copy2(XRAY_CONF, backup)
+    XRAY_CONF.write_text(new_content, encoding="utf-8")
+    test = _run(["xray", "run", "-test", "-config", str(XRAY_CONF)], timeout=20)
+    if not test or test.returncode != 0:
+        shutil.copy2(backup, XRAY_CONF)
+        return False, "❌ Suppression rendrait la configuration Xray invalide. Configuration restaurée."
+    restart = _run(["systemctl", "restart", "xray"], timeout=30)
+    if not restart or restart.returncode != 0:
+        shutil.copy2(backup, XRAY_CONF)
+        _run(["systemctl", "restart", "xray"], timeout=30)
+        return False, "❌ Xray n'a pas redémarré. Configuration restaurée."
+    for path in (_db_path(protocol, user), _legacy_path(protocol, user)):
+        try:
+            if path.exists(): path.unlink()
+        except OSError: pass
+    return True, f"🗑️ <b>Compte {protocol.upper()} <code>{_esc(user)}</code> supprimé.</b>"
