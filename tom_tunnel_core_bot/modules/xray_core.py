@@ -1,322 +1,210 @@
-import uuid
 import base64
-import subprocess
-from datetime import datetime, timedelta
+import json
 import os
 import re
+import subprocess
+import uuid
+from datetime import datetime, timedelta
 
-XRAY_CONF = '/etc/xray/config.json'
+XRAY_CONF = "/etc/xray/config.json"
+DB_DIR = "/etc/tom_tunnel_bot/xray_accounts"
+WEB_CONFIG = "/etc/nexus-tunnel-web/config.json"
+PROTOCOLS = {"vless", "vmess", "trojan", "socks"}
 
 def get_domain():
     try:
-        with open('/etc/xray/domain', 'r') as f: return f.read().strip()
-    except:
+        return open("/etc/xray/domain", encoding="utf-8").read().strip()
+    except Exception:
         return "votre-domaine.com"
 
-def create_xray_account(protocol, user, days, created_by_id=None):
-    if not os.path.exists(XRAY_CONF):
-        return False, "❌ Fichier config Xray introuvable."
+def _valid_user(user):
+    return bool(re.fullmatch(r"[A-Za-z0-9._-]{1,32}", user or ""))
 
-    days = int(days)
-    exp_date = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d")
-    client_id = str(uuid.uuid4())
-    domain = get_domain()
-
-    # 1. LECTURE SÉCURISÉE
-    with open(XRAY_CONF, 'r') as f:
-        lines = f.readlines()
-
-    new_lines = []
-    injected = False
-
-    # 2. INJECTION CHIRURGICALE STYLE "SED"
-    for line in lines:
-        new_lines.append(line)
-        clean_line = line.strip()
-
-        if protocol == 'vless':
-            if clean_line in ('#vless', '#vlessgrpc'):
-                new_lines.append(f'#& {user} {exp_date} {client_id}\n')
-                new_lines.append(f'}},{{"id": "{client_id}","email": "{user}"\n')
-                injected = True
-
-        elif protocol == 'vmess':
-            if clean_line in ('#vmess', '#vmessgrpc'):
-                new_lines.append(f'### {user} {exp_date} {client_id}\n')
-                new_lines.append(f'}},{{"id": "{client_id}","alterId": 0,"email": "{user}"\n')
-                injected = True
-
-        elif protocol == 'trojan':
-            if clean_line in ('#trojanws', '#trojangrpc'):
-                new_lines.append(f'#! {user} {exp_date} {client_id}\n')
-                new_lines.append(f'}},{{"password": "{client_id}","email": "{user}"\n')
-                injected = True
-
-        elif protocol == 'socks':
-            if clean_line == '#socks':
-                new_lines.append(f'## {user} {exp_date} {client_id}\n')
-                new_lines.append(f'}},{{"user": "{user}","pass": "{client_id}"\n')
-                injected = True
-
-    if not injected:
-        return False, f"❌ Balises Bash pour {protocol.upper()} introuvables."
-
-    with open(XRAY_CONF, 'w') as f:
-        f.writelines(new_lines)
-
-    subprocess.run("systemctl restart xray", shell=True)
-
-
-    # Enregistrement avec createdById
-    db_dir = '/etc/nexus_bot/xray_accounts'
-    os.makedirs(db_dir, exist_ok=True)
-    with open(f"{db_dir}/{protocol}_{user}.txt", 'w') as f:
-        f.write(f"username={user}
-uuid={client_id}
-expiry={exp_date}
-createdById={created_by_id}
-createdAt={datetime.utcnow().isoformat()}Z
-protocol={protocol}
-status=active
-")
-
-    # --- SYNC WITH WEB PANEL ---
+def _sync_web(user, protocol, client_id, expiry):
     try:
-        import urllib.request, json
         port = 2087
         try:
-            with open('/etc/nexus-tunnel-web/config.json', 'r') as cf:
-                config_web = json.load(cf)
-                if 'port' in config_web: port = config_web['port']
-        except: pass
-        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/clients/sync", method="POST")
-        req.add_header('Content-Type', 'application/json')
-        data = json.dumps({"username": user, "protocol": protocol, "password": client_id, "expiry": exp_date, "uuid": client_id}).encode('utf-8')
-        urllib.request.urlopen(req, data=data, timeout=2)
-    except Exception as e:
-        print("Web Sync Error:", e)
-    # ---------------------------
+            with open(WEB_CONFIG, encoding="utf-8") as f:
+                port = int(json.load(f).get("port", port))
+        except Exception:
+            pass
+        import urllib.request
+        data = json.dumps({
+            "username": user, "protocol": protocol,
+            "password": client_id, "expiry": expiry, "uuid": client_id
+        }).encode()
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/clients/sync",
+            data=data, method="POST",
+            headers={"Content-Type": "application/json"}
+        )
+        urllib.request.urlopen(req, timeout=2).read()
+    except Exception:
+        pass
 
+def _links(protocol, user, client_id, domain):
+    if protocol == "vless":
+        return (
+            f"vless://{client_id}@{domain}:443?path=/vless&security=tls&encryption=none&type=ws#{user}",
+            f"vless://{client_id}@{domain}:80?path=/vless&encryption=none&type=ws#{user}",
+            f"vless://{client_id}@{domain}:443?mode=gun&security=tls&encryption=none&type=grpc&serviceName=vless-grpc#{user}"
+        )
+    if protocol == "vmess":
+        a = json.dumps({"v":"2","ps":user,"add":domain,"port":"443","id":client_id,"aid":"0","net":"ws","path":"/vmess","type":"none","host":"","tls":"tls"}, separators=(",",":"))
+        b = json.dumps({"v":"2","ps":user,"add":domain,"port":"80","id":client_id,"aid":"0","net":"ws","path":"/vmess","type":"none","host":"","tls":"none"}, separators=(",",":"))
+        c = json.dumps({"v":"2","ps":user,"add":domain,"port":"443","id":client_id,"aid":"0","net":"grpc","path":"vmess-grpc","type":"none","host":"","tls":"tls"}, separators=(",",":"))
+        return tuple("vmess://" + base64.b64encode(x.encode()).decode() for x in (a,b,c))
+    if protocol == "trojan":
+        return (
+            f"trojan://{client_id}@{domain}:443?path=/trws&security=tls&encryption=none&host={domain}&type=ws#{user}",
+            f"trojan://{client_id}@{domain}:80?path=/trws&encryption=none&security=none&host={domain}&type=ws#{user}",
+            f"trojan://{client_id}@{domain}:443?mode=gun&security=tls&type=grpc&serviceName=trojan-grpc&sni={domain}#{user}"
+        )
+    if protocol == "socks":
+        link = f"socks5://{user}:{client_id}@{domain}:1080"
+        return link, link, link
+    raise ValueError("Protocole inconnu")
 
-    # 3. GÉNÉRATION DES PAYLOADS
-    if protocol == 'vless':
-        link_tls = f"vless://{client_id}@{domain}:443?path=/vless&security=tls&encryption=none&type=ws#{user}"
-        link_ntls = f"vless://{client_id}@{domain}:80?path=/vless&encryption=none&type=ws#{user}"
-        link_grpc = f"vless://{client_id}@{domain}:443?mode=gun&security=tls&encryption=none&type=grpc&serviceName=vless-grpc#{user}"
+def create_xray_account(protocol, user, days, created_by_id=None):
+    protocol = protocol.lower()
+    if protocol not in PROTOCOLS:
+        return False, "❌ Protocole Xray invalide."
+    if not _valid_user(user):
+        return False, "❌ Nom d'utilisateur invalide."
+    if not os.path.exists(XRAY_CONF):
+        return False, "❌ Fichier config Xray introuvable."
+    try:
+        days = int(days)
+        if days <= 0: raise ValueError
+    except ValueError:
+        return False, "❌ La durée doit être un nombre positif."
 
-    elif protocol == 'vmess':
-        ws_tls = f'{{"v":"2","ps":"{user}","add":"{domain}","port":"443","id":"{client_id}","aid":"0","net":"ws","path":"/vmess","type":"none","host":"","tls":"tls"}}'
-        ws_ntls = f'{{"v":"2","ps":"{user}","add":"{domain}","port":"80","id":"{client_id}","aid":"0","net":"ws","path":"/vmess","type":"none","host":"","tls":"none"}}'
-        grpc = f'{{"v":"2","ps":"{user}","add":"{domain}","port":"443","id":"{client_id}","aid":"0","net":"grpc","path":"vmess-grpc","type":"none","host":"","tls":"tls"}}'
-        link_tls = "vmess://" + base64.b64encode(ws_tls.encode('utf-8')).decode('utf-8')
-        link_ntls = "vmess://" + base64.b64encode(ws_ntls.encode('utf-8')).decode('utf-8')
-        link_grpc = "vmess://" + base64.b64encode(grpc.encode('utf-8')).decode('utf-8')
+    client_id = str(uuid.uuid4())
+    expiry = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d")
+    lines = open(XRAY_CONF, encoding="utf-8").readlines()
+    markers = {
+        "vless": ("#vless", "#vlessgrpc"),
+        "vmess": ("#vmess", "#vmessgrpc"),
+        "trojan": ("#trojanws", "#trojangrpc"),
+        "socks": ("#socks",)
+    }
+    new = []
+    injected = False
+    for line in lines:
+        new.append(line)
+        clean = line.strip()
+        if clean in markers[protocol]:
+            injected = True
+            if protocol == "vless":
+                new += [f"#& {user} {expiry} {client_id}\n", f'}},{{"id": "{client_id}","email": "{user}"\n']
+            elif protocol == "vmess":
+                new += [f"### {user} {expiry} {client_id}\n", f'}},{{"id": "{client_id}","alterId": 0,"email": "{user}"\n']
+            elif protocol == "trojan":
+                new += [f"#! {user} {expiry} {client_id}\n", f'}},{{"password": "{client_id}","email": "{user}"\n']
+            else:
+                new += [f"## {user} {expiry} {client_id}\n", f'}},{{"user": "{user}","pass": "{client_id}"\n']
+            break
+    if not injected:
+        return False, f"❌ Balise Xray pour {protocol.upper()} introuvable."
+    # Keep the remainder of the original config after the marker.
+    idx = next(i for i,l in enumerate(lines) if l.strip() in markers[protocol])
+    new.extend(lines[idx+1:])
+    with open(XRAY_CONF, "w", encoding="utf-8") as f:
+        f.writelines(new)
+    subprocess.run(["systemctl", "restart", "xray"], capture_output=True)
 
-    elif protocol == 'trojan':
-        link_tls = f"trojan://{client_id}@{domain}:443?path=/trws&security=tls&encryption=none&host={domain}&type=ws#{user}"
-        link_ntls = f"trojan://{client_id}@{domain}:80?path=/trws&encryption=none&security=none&host={domain}&type=ws#{user}"
-        link_grpc = f"trojan://{client_id}@{domain}:443?mode=gun&security=tls&type=grpc&serviceName=trojan-grpc&sni={domain}#{user}"
-
-    elif protocol == 'socks':
-        link_tls = f"socks5://{user}:{client_id}@{domain}:1080"
-        link_ntls = f"socks5://{user}:{client_id}@{domain}:1080"
-        link_grpc = link_ntls
-
-    # 4. FORMATAGE TELEGRAM
-    msg = (
-        f"‎╭▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬╮\n"
-        f"┃ <b>{protocol.upper()} ACCOUNT DETAILS</b>\n"
-        f"‎╰▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬╯\n"
+    os.makedirs(DB_DIR, exist_ok=True)
+    with open(f"{DB_DIR}/{protocol}_{user}.txt", "w", encoding="utf-8") as f:
+        f.write(
+            f"username={user}\nuuid={client_id}\nexpiry={expiry}\n"
+            f"createdById={created_by_id}\ncreatedAt={datetime.utcnow().isoformat()}Z\n"
+            f"protocol={protocol}\nstatus=active\n"
+        )
+    _sync_web(user, protocol, client_id, expiry)
+    a,b,c = _links(protocol, user, client_id, get_domain())
+    return True, (
+        f"┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n┃ <b>{protocol.upper()} ACCOUNT</b>\n┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n"
         f"👤 <b>Username:</b> <code>{user}</code>\n"
-        f"⏳ <b>Expired:</b> <code>{exp_date}</code>\n"
-        f"🔑 <b>UUID/Pass:</b> <code>{client_id}</code>\n"
-        f"🌐 <b>Domain:</b> <code>{domain}</code>\n"
-        f"▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
-        f"🔗 <b>TLS (443):</b>\n<code>{link_tls}</code>\n\n"
-        f"🔗 <b>NTLS (80):</b>\n<code>{link_ntls}</code>\n\n"
-        f"🔗 <b>GRPC (443):</b>\n<code>{link_grpc}</code>\n"
-        f"▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"
+        f"⏳ <b>Expiry:</b> <code>{expiry}</code>\n"
+        f"🔑 <b>UUID/Pass:</b> <code>{client_id}</code>\n\n"
+        f"🔗 <b>TLS:</b>\n<code>{a}</code>\n\n"
+        f"🔗 <b>NTLS:</b>\n<code>{b}</code>\n\n"
+        f"🔗 <b>GRPC:</b>\n<code>{c}</code>"
     )
-    return True, msg
 
 def get_xray_usernames(protocol):
-    db_dir = '/etc/nexus_bot/xray_accounts'
-    if not os.path.exists(db_dir):
+    if not os.path.isdir(DB_DIR):
         return []
-    return [f[len(protocol)+1:].replace('.txt', '') for f in sorted(os.listdir(db_dir)) if f.startswith(f"{protocol}_") and f.endswith('.txt')]
+    prefix = protocol + "_"
+    return [f[len(prefix):-4] for f in sorted(os.listdir(DB_DIR)) if f.startswith(prefix) and f.endswith(".txt")]
 
 def get_xray_account_details(protocol, user):
-    db_file = f"/etc/nexus_bot/xray_accounts/{protocol}_{user}.txt"
-    if not os.path.exists(db_file):
+    path = f"{DB_DIR}/{protocol}_{user}.txt"
+    if not os.path.exists(path):
         return False, f"❌ Compte {protocol.upper()} <code>{user}</code> introuvable."
     data = {}
-    with open(db_file, 'r') as f:
-        for line in f:
-            if '=' in line:
-                k, v = line.strip().split('=', 1)
-                data[k] = v
-    client_id = data.get('uuid', 'N/A')
-    exp_date = data.get('expiry', 'N/A')
-    domain = get_domain()
-
-    if protocol == 'vless':
-        link_tls = f"vless://{client_id}@{domain}:443?path=/vless&security=tls&encryption=none&type=ws#{user}"
-        link_ntls = f"vless://{client_id}@{domain}:80?path=/vless&encryption=none&type=ws#{user}"
-        link_grpc = f"vless://{client_id}@{domain}:443?mode=gun&security=tls&encryption=none&type=grpc&serviceName=vless-grpc#{user}"
-    elif protocol == 'vmess':
-        ws_tls = f'{{"v":"2","ps":"{user}","add":"{domain}","port":"443","id":"{client_id}","aid":"0","net":"ws","path":"/vmess","type":"none","host":"","tls":"tls"}}'
-        ws_ntls = f'{{"v":"2","ps":"{user}","add":"{domain}","port":"80","id":"{client_id}","aid":"0","net":"ws","path":"/vmess","type":"none","host":"","tls":"none"}}'
-        grpc = f'{{"v":"2","ps":"{user}","add":"{domain}","port":"443","id":"{client_id}","aid":"0","net":"grpc","path":"vmess-grpc","type":"none","host":"","tls":"tls"}}'
-        link_tls = "vmess://" + base64.b64encode(ws_tls.encode('utf-8')).decode('utf-8')
-        link_ntls = "vmess://" + base64.b64encode(ws_ntls.encode('utf-8')).decode('utf-8')
-        link_grpc = "vmess://" + base64.b64encode(grpc.encode('utf-8')).decode('utf-8')
-    elif protocol == 'trojan':
-        link_tls = f"trojan://{client_id}@{domain}:443?path=/trws&security=tls&encryption=none&host={domain}&type=ws#{user}"
-        link_ntls = f"trojan://{client_id}@{domain}:80?path=/trws&encryption=none&security=none&host={domain}&type=ws#{user}"
-        link_grpc = f"trojan://{client_id}@{domain}:443?mode=gun&security=tls&type=grpc&serviceName=trojan-grpc&sni={domain}#{user}"
-    elif protocol == 'socks':
-        link_tls = f"socks5://{user}:{client_id}@{domain}:1080"
-        link_ntls = f"socks5://{user}:{client_id}@{domain}:1080"
-        link_grpc = link_ntls
-    else:
-        return False, f"❌ Protocole inconnu: {protocol}"
-
-    msg = (
-        f"┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n"
-        f"┃ <b>{protocol.upper()} ACCOUNT DETAILS</b>\n"
-        f"┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n"
+    for line in open(path, encoding="utf-8"):
+        if "=" in line:
+            k,v=line.rstrip().split("=",1); data[k]=v
+    a,b,c = _links(protocol, user, data.get("uuid","N/A"), get_domain())
+    return True, (
+        f"┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n┃ <b>{protocol.upper()} ACCOUNT</b>\n┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n"
         f"👤 <b>Username:</b> <code>{user}</code>\n"
-        f"⏳ <b>Expired:</b> <code>{exp_date}</code>\n"
-        f"🔑 <b>UUID/Pass:</b> <code>{client_id}</code>\n"
-        f"🌐 <b>Domain:</b> <code>{domain}</code>\n"
-        f"▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
-        f"🔗 <b>TLS (443):</b>\n<code>{link_tls}</code>\n\n"
-        f"🔗 <b>NTLS (80):</b>\n<code>{link_ntls}</code>\n\n"
-        f"🔗 <b>GRPC (443):</b>\n<code>{link_grpc}</code>\n"
-        f"▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"
+        f"⏳ <b>Expiry:</b> <code>{data.get('expiry','N/A')}</code>\n"
+        f"🔑 <b>UUID/Pass:</b> <code>{data.get('uuid','N/A')}</code>\n\n"
+        f"🔗 <b>TLS:</b>\n<code>{a}</code>\n\n🔗 <b>NTLS:</b>\n<code>{b}</code>\n\n🔗 <b>GRPC:</b>\n<code>{c}</code>"
     )
-    return True, msg
 
 def renew_xray_account(protocol, user, days):
-    db_file = f"/etc/nexus_bot/xray_accounts/{protocol}_{user}.txt"
-    if not os.path.exists(db_file):
-        return False, f"❌ Compte {protocol.upper()} <code>{user}</code> introuvable dans la base."
-
-    days = int(days)
-    # Read current expiry from db
-    current_exp = None
-    lines_db = []
-    with open(db_file, 'r') as f:
-        lines_db = f.readlines()
-    for l in lines_db:
-        if l.startswith("expiry="):
-            current_exp = l.split("=", 1)[1].strip()
-            break
-
+    path = f"{DB_DIR}/{protocol}_{user}.txt"
+    if not os.path.exists(path):
+        return False, f"❌ Compte {protocol.upper()} <code>{user}</code> introuvable."
+    try: days=int(days)
+    except ValueError: return False, "❌ Durée invalide."
+    data = {}
+    for line in open(path, encoding="utf-8"):
+        if "=" in line:
+            k,v=line.rstrip().split("=",1); data[k]=v
     try:
-        base_date = datetime.strptime(current_exp, "%Y-%m-%d") if current_exp else datetime.now()
-        if base_date < datetime.now():
-            base_date = datetime.now()
-    except (ValueError, TypeError):
-        base_date = datetime.now()
-
-    new_exp = (base_date + timedelta(days=days)).strftime("%Y-%m-%d")
-
-    # Update xray config comment line
+        base=datetime.strptime(data.get("expiry",""),"%Y-%m-%d")
+        if base < datetime.now(): base=datetime.now()
+    except ValueError:
+        base=datetime.now()
+    new_exp=(base+timedelta(days=days)).strftime("%Y-%m-%d")
+    lines=open(path,encoding="utf-8").readlines()
+    with open(path,"w",encoding="utf-8") as f:
+        for line in lines:
+            f.write(f"expiry={new_exp}\n" if line.startswith("expiry=") else line)
     if os.path.exists(XRAY_CONF):
-        with open(XRAY_CONF, 'r') as f:
-            content = f.read()
-        # Update date in comment lines matching the user
-        # Comment prefixes used: #& (vless), ### (vmess), #! (trojan), ## (socks)
-        content = re.sub(
+        content=open(XRAY_CONF,encoding="utf-8").read()
+        content=re.sub(
             rf'((?:#[&!]|###+)\s+{re.escape(user)}\s+)\S+(\s)',
-            rf'\g<1>{new_exp}\2',
-            content
+            rf'\g<1>{new_exp}\2', content
         )
-        with open(XRAY_CONF, 'w') as f:
-            f.write(content)
-        subprocess.run("systemctl restart xray", shell=True)
-
-    # Update db file
-    new_db_lines = []
-    for l in lines_db:
-        if l.startswith("expiry="):
-            new_db_lines.append(f"expiry={new_exp}\n")
-        else:
-            new_db_lines.append(l)
-    with open(db_file, 'w') as f:
-        f.writelines(new_db_lines)
-
-    ok, details = get_xray_account_details(protocol, user)
-    if ok:
-        renewal_header = (
-            f"✅ <b>COMPTE {protocol.upper()} RENOUVELÉ</b>\n"
-            f"📅 <b>Ancienne expiration:</b> {current_exp} → <b>{new_exp}</b>\n\n"
-        )
-        return True, renewal_header + details
-    return True, (
-        f"✅ <b>COMPTE {protocol.upper()} RENOUVELÉ</b>\n\n"
-        f"👤 <b>Username:</b> <code>{user}</code>\n"
-        f"📅 <b>Ancienne expiration:</b> {current_exp}\n"
-        f"➕ <b>Jours ajoutés:</b> {days}\n"
-        f"📅 <b>Nouvelle expiration:</b> {new_exp}\n"
-    )
+        open(XRAY_CONF,"w",encoding="utf-8").write(content)
+        subprocess.run(["systemctl","restart","xray"],capture_output=True)
+    return True, f"✅ <b>COMPTE {protocol.upper()} RENOUVELÉ</b>\n📅 Nouvelle expiration : <code>{new_exp}</code>"
 
 def delete_xray_account(protocol, user):
     if not os.path.exists(XRAY_CONF):
         return False, "❌ Fichier config Xray introuvable."
-
-    with open(XRAY_CONF, 'r') as f:
-        lines = f.readlines()
-
-    new_lines = []
-    skip_next = False
-    removed = False
-    for line in lines:
-        clean = line.strip()
-        # Detect our account comment lines: #& user, ### user, #! user, ## user
-        if re.match(rf'^(?:#[&!]|###+)\s+{re.escape(user)}\s+', clean):
-            skip_next = True
-            removed = True
-            continue
-        if skip_next:
-            skip_next = False
-            continue
-        new_lines.append(line)
-
+    content=open(XRAY_CONF,encoding="utf-8").read().splitlines(True)
+    new=[]; skip=False; removed=False
+    for line in content:
+        if re.match(rf'^(?:#[&!]|###+)\s+{re.escape(user)}\s+', line.strip()):
+            skip=True; removed=True; continue
+        if skip:
+            skip=False; continue
+        new.append(line)
     if not removed:
-        return False, f"❌ Utilisateur <code>{user}</code> introuvable dans la config {protocol.upper()}."
-
-    with open(XRAY_CONF, 'w') as f:
-        f.writelines(new_lines)
-    subprocess.run("systemctl restart xray", shell=True)
-
-    db_file = f"/etc/nexus_bot/xray_accounts/{protocol}_{user}.txt"
-    if os.path.exists(db_file):
-        os.remove(db_file)
-
-    return True, f"🗑️ <b>Compte {protocol.upper()} <code>{user}</code> supprimé avec succès.</b>"
+        return False, f"❌ Utilisateur <code>{user}</code> introuvable dans Xray."
+    open(XRAY_CONF,"w",encoding="utf-8").writelines(new)
+    subprocess.run(["systemctl","restart","xray"],capture_output=True)
+    path=f"{DB_DIR}/{protocol}_{user}.txt"
+    if os.path.exists(path): os.remove(path)
+    return True, f"🗑️ <b>Compte {protocol.upper()} <code>{user}</code> supprimé.</b>"
 
 def list_xray_accounts(protocol):
-    db_dir = '/etc/nexus_bot/xray_accounts'
-    if not os.path.exists(db_dir):
-        return f"📋 Aucun compte {protocol.upper()} trouvé."
-
-    entries = [f for f in os.listdir(db_dir) if f.startswith(f"{protocol}_")]
-    if not entries:
-        return f"📋 Aucun compte {protocol.upper()} trouvé."
-
-    msg = f"📋 <b>LISTE DES COMPTES {protocol.upper()}:</b>\n\n"
-    for e in entries:
-        user = e[len(protocol)+1:].replace('.txt', '')
-        expiry = "N/A"
-        try:
-            with open(f"{db_dir}/{e}") as f:
-                for l in f:
-                    if l.startswith("expiry="):
-                        expiry = l.split("=", 1)[1].strip()
-        except Exception:
-            pass
-        msg += f"👤 <code>{user}</code> | Exp: <i>{expiry}</i>\n"
-    msg += f"\n📊 <b>Total:</b> {len(entries)} compte(s)"
-    return msg
+    users=get_xray_usernames(protocol)
+    if not users: return f"📋 Aucun compte {protocol.upper()} trouvé."
+    return f"📋 <b>LISTE {protocol.upper()}</b>\n\n" + "\n".join(f"👤 <code>{u}</code>" for u in users) + f"\n\n📊 Total: {len(users)}"
