@@ -116,9 +116,52 @@ def home(c):
 
 @bot.callback_query_handler(func=lambda c:c.data in ["menu_ssh","menu_vmess","menu_vless","menu_trojan","menu_socks","menu_zivpn"])
 def protocol_menu(c):
-    if not is_admin(c.from_user.id): return
-    proto=c.data.split("_",1)[1]
-    show(c,f"<b>Module {proto.upper()}</b>\nChoisissez une action :",protocol_markup(proto))
+    # Réponse immédiate à Telegram : évite le bouton qui semble "ne rien faire".
+    try:
+        bot.answer_callback_query(c.id, "📡 Ouverture du module...")
+    except Exception:
+        pass
+
+    try:
+        if not is_admin(c.from_user.id):
+            bot.send_message(c.message.chat.id, "⛔ Accès refusé.")
+            return
+
+        proto = c.data.split("_", 1)[1]
+        markup = protocol_markup(proto)
+        text = f"<b>📡 MODULE {proto.upper()}</b>\n\nChoisissez une action :"
+
+        # Après /start, le message peut être une photo. Dans ce cas on
+        # supprime la photo et envoie un vrai message texte avec les boutons.
+        if getattr(c.message, "content_type", "") == "photo":
+            try:
+                bot.delete_message(c.message.chat.id, c.message.message_id)
+            except Exception:
+                pass
+            bot.send_message(c.message.chat.id, text, parse_mode="HTML", reply_markup=markup)
+        else:
+            try:
+                bot.edit_message_text(
+                    text,
+                    c.message.chat.id,
+                    c.message.message_id,
+                    parse_mode="HTML",
+                    reply_markup=markup
+                )
+            except Exception:
+                bot.send_message(c.message.chat.id, text, parse_mode="HTML", reply_markup=markup)
+
+    except Exception as exc:
+        logging.exception("Erreur menu protocole %s", getattr(c, "data", "inconnu"))
+        try:
+            bot.send_message(
+                c.message.chat.id,
+                f"❌ <b>Erreur SSH/WS</b>\n<code>{str(exc)[:1000]}</code>",
+                parse_mode="HTML",
+                reply_markup=home_markup()
+            )
+        except Exception:
+            pass
 
 def ask(c,prompt,handler,*args):
     msg=bot.send_message(c.message.chat.id,prompt,parse_mode="HTML")
