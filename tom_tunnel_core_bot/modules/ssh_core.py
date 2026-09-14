@@ -1,241 +1,201 @@
-import subprocess
 import os
+import re
+import subprocess
 from datetime import datetime, timedelta
+
+DB_DIR = "/etc/tom_tunnel_bot/ssh_accounts"
+WEB_CONFIG = "/etc/nexus-tunnel-web/config.json"
 
 def get_file(path, default="NON_DEFINI"):
     try:
-        with open(path, 'r') as f: return f.read().strip()
-    except:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception:
         return default
 
+def _valid_user(user):
+    return bool(re.fullmatch(r"[A-Za-z0-9._-]{1,32}", user or ""))
+
 def _server_info():
-    domain = get_file('/etc/xray/domain', 'votre-domaine.com')
-    pub_key = get_file('/etc/slowdns/server.pub', 'PUB_KEY_NOT_FOUND')
-    ns_domain = get_file('/etc/slowdns/nsdomain', 'NS_DOMAIN_NOT_FOUND')
-    myip = subprocess.getoutput("wget -qO- ipv4.icanhazip.com 2>/dev/null || curl -s ipv4.icanhazip.com")
+    domain = get_file("/etc/xray/domain", "votre-domaine.com")
+    pub_key = get_file("/etc/slowdns/server.pub", "PUB_KEY_NOT_FOUND")
+    ns_domain = get_file("/etc/slowdns/nsdomain", "NS_DOMAIN_NOT_FOUND")
+    myip = subprocess.getoutput(
+        "wget -qO- ipv4.icanhazip.com 2>/dev/null || curl -s ipv4.icanhazip.com"
+    )
     return domain, pub_key, ns_domain, myip
 
-def create_ssh_account(user, password, days, created_by_id=None):
-    cmd = f"useradd -e $(date -d '{days} days' +'%Y-%m-%d') -s /bin/false -M {user} && echo '{user}:{password}' | chpasswd"
-    res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-
-    if res.returncode == 0:
-        exp_date = (datetime.now() + timedelta(days=int(days))).strftime("%Y-%m-%d")
-        domain, pub_key, ns_domain, myip = _server_info()
-
-
-        # Enregistrement du compte avec createdById
-        db_dir = '/etc/nexus_bot/ssh_accounts'
-        os.makedirs(db_dir, exist_ok=True)
-        with open(f"{db_dir}/{user}.txt", 'w') as f:
-            f.write(f"username={user}
-password={password}
-expiry={exp_date}
-createdById={created_by_id}
-createdAt={datetime.utcnow().isoformat()}Z
-protocol=ssh
-status=active
-")
-
-        # --- SYNC WITH WEB PANEL ---
+def _sync_web(user, password, expiry):
+    try:
+        import json, urllib.request
+        port = 2087
         try:
-            import urllib.request, json
-            port = 2087
-            try:
-                with open('/etc/nexus-tunnel-web/config.json', 'r') as cf:
-                    config_web = json.load(cf)
-                    if 'port' in config_web: port = config_web['port']
-            except: pass
-            req = urllib.request.Request(f"http://127.0.0.1:{port}/api/clients/sync", method="POST")
-            req.add_header('Content-Type', 'application/json')
-            data = json.dumps({"username": user, "protocol": "ssh", "password": password, "expiry": exp_date, "uuid": ""}).encode('utf-8')
-            urllib.request.urlopen(req, data=data, timeout=2)
-        except Exception as e:
+            with open(WEB_CONFIG, "r", encoding="utf-8") as f:
+                port = int(json.load(f).get("port", port))
+        except Exception:
             pass
-        # ---------------------------
-
-
-        msg = (
-            f"‎╭▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬╮\n"
-            f"┃ <b>SSH ACCOUNT DETAILS</b>\n"
-            f"‎╰▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬╯\n"
-            f"👤 <b>Username:</b> <code>{user}</code>\n"
-            f"🔑 <b>Password:</b> <code>{password}</code>\n"
-            f"⏳ <b>Expiry Date:</b> {exp_date}\n"
-            f"🖥️ <b>Host/IP:</b> <code>{myip}</code>\n"
-            f"🌐 <b>Domain:</b> <code>{domain}</code>\n"
-            f"⚓ <b>NS Domain:</b> <code>{ns_domain}</code>\n"
-            f"‎▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
-            f"🔌 <b>Ports:</b>\n"
-            f"  OpenSSH(22), Dropbear(109,143)\n"
-            f"  Stunnel(447,777), WS(80,443)\n"
-            f"  UDPGW(7100-7900), Squid(3128), WS(8880), WS OV(8181)\n"
-            f"‎▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
-            f"🚀 <b>UDP Custom:</b>\n"
-            f"<code>{myip}:1-65535@{user}:{password}</code>\n"
-            f"‎▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
-            f"🐌 <b>Slow DNS PUB:</b>\n"
-            f"<code>{pub_key}</code>\n"
-            f"‎▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
-            f"📦 <b>Payload WS:</b>\n"
-            f"<code>GET / HTTP/1.1[crlf]Host: {domain}[crlf]Upgrade: websocket[crlf][crlf]</code>\n"
-            f"‎▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
-            f"📥 <b>OpenVPN:</b> https://{domain}:2081\n"
+        data = json.dumps({
+            "username": user, "protocol": "ssh",
+            "password": password, "expiry": expiry, "uuid": ""
+        }).encode()
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/clients/sync",
+            data=data, method="POST",
+            headers={"Content-Type": "application/json"}
         )
-        return True, msg
-    return False, f"❌ Échec de la création:\n<code>{res.stderr}</code>"
+        urllib.request.urlopen(req, timeout=2).read()
+    except Exception:
+        pass
 
-def get_ssh_usernames():
-    db_dir = '/etc/nexus_bot/ssh_accounts'
-    if not os.path.exists(db_dir):
-        return []
-    return [f.replace('.txt', '') for f in sorted(os.listdir(db_dir)) if f.endswith('.txt')]
+def create_ssh_account(user, password, days, created_by_id=None):
+    if not _valid_user(user):
+        return False, "❌ Nom d'utilisateur invalide. Utilisez lettres, chiffres, point, tiret ou underscore."
+    if not password:
+        return False, "❌ Le mot de passe est obligatoire."
+    try:
+        days = int(days)
+        if days <= 0:
+            raise ValueError
+    except ValueError:
+        return False, "❌ La durée doit être un nombre positif."
 
-def get_ssh_account_details(user):
-    db_file = f"/etc/nexus_bot/ssh_accounts/{user}.txt"
-    if not os.path.exists(db_file):
-        return False, f"❌ Compte SSH <code>{user}</code> introuvable."
-    data = {}
-    with open(db_file, 'r') as f:
-        for line in f:
-            if '=' in line:
-                k, v = line.strip().split('=', 1)
-                data[k] = v
-    password = data.get('password', 'N/A')
-    exp_date = data.get('expiry', 'N/A')
+    if subprocess.run(["id", user], capture_output=True).returncode == 0:
+        return False, f"❌ L'utilisateur <code>{user}</code> existe déjà."
+
+    expiry = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d")
+    try:
+        subprocess.run(
+            ["useradd", "-e", expiry, "-s", "/bin/false", "-M", user],
+            check=True, capture_output=True, text=True
+        )
+        subprocess.run(
+            ["chpasswd"], input=f"{user}:{password}\n",
+            check=True, capture_output=True, text=True
+        )
+    except subprocess.CalledProcessError as e:
+        return False, f"❌ Échec de la création : <code>{e.stderr.strip()}</code>"
+
+    os.makedirs(DB_DIR, exist_ok=True)
+    with open(f"{DB_DIR}/{user}.txt", "w", encoding="utf-8") as f:
+        f.write(
+            f"username={user}\npassword={password}\nexpiry={expiry}\n"
+            f"createdById={created_by_id}\ncreatedAt={datetime.utcnow().isoformat()}Z\n"
+            "protocol=ssh\nstatus=active\n"
+        )
+    _sync_web(user, password, expiry)
+
     domain, pub_key, ns_domain, myip = _server_info()
     msg = (
-        f"‎╭▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬╮\n"
-        f"┃ <b>SSH ACCOUNT DETAILS</b>\n"
-        f"‎╰▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬╯\n"
+        "╭▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬╮\n"
+        "┃ <b>SSH ACCOUNT DETAILS</b>\n"
+        "╰▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬╯\n"
         f"👤 <b>Username:</b> <code>{user}</code>\n"
         f"🔑 <b>Password:</b> <code>{password}</code>\n"
-        f"⏳ <b>Expiry Date:</b> {exp_date}\n"
+        f"⏳ <b>Expiry Date:</b> {expiry}\n"
         f"🖥️ <b>Host/IP:</b> <code>{myip}</code>\n"
         f"🌐 <b>Domain:</b> <code>{domain}</code>\n"
-        f"🛡️ <b>NS Domain:</b> <code>{ns_domain}</code>\n"
-        f"‎▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
-        f"🔌 <b>Ports:</b>\n"
-        f"  OpenSSH(22), Dropbear(109,143)\n"
-        f"  Stunnel(447,777), WS(80,443)\n"
-        f"  UDPGW(7100-7900), Squid(3128), WS(8880), WS OV(8181)\n"
-        f"‎▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
-        f"🚀 <b>UDP Custom:</b>\n"
-        f"<code>{myip}:1-65535@{user}:{password}</code>\n"
-        f"‎▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
-        f"🐌 <b>Slow DNS PUB:</b>\n"
-        f"<code>{pub_key}</code>\n"
-        f"‎▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
-        f"📦 <b>Payload WS:</b>\n"
-        f"<code>GET / HTTP/1.1[crlf]Host: {domain}[crlf]Upgrade: websocket[crlf][crlf]</code>\n"
-        f"‎▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
-        f"📥 <b>OpenVPN:</b> https://{domain}:2081\n"
+        f"⚓ <b>NS Domain:</b> <code>{ns_domain}</code>\n"
+        "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
+        "🔌 <b>Ports:</b>\n"
+        "OpenSSH(22), Dropbear(109,143)\n"
+        "Stunnel(447,777), WS(80,443)\n"
+        "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
+        f"🐌 <b>Slow DNS PUB:</b>\n<code>{pub_key}</code>"
     )
     return True, msg
 
-def renew_ssh_account(user, days):
-    if not subprocess.run(f"id {user}", shell=True, capture_output=True).returncode == 0:
-        return False, f"❌ Utilisateur <code>{user}</code> introuvable."
+def get_ssh_usernames():
+    if not os.path.isdir(DB_DIR):
+        return []
+    return [x[:-4] for x in sorted(os.listdir(DB_DIR)) if x.endswith(".txt")]
 
-    exp_cmd = f"chage -l {user} | grep 'Account expires' | awk -F': ' '{{print $2}}'"
-    current_exp = subprocess.run(exp_cmd, shell=True, capture_output=True, text=True).stdout.strip()
-
-    try:
-        if current_exp == "never" or not current_exp or current_exp == "password must be changed":
-            old_date = datetime.now()
-        else:
-            old_date = datetime.strptime(current_exp, "%b %d, %Y")
-        new_exp = (old_date + timedelta(days=int(days))).strftime("%Y-%m-%d")
-    except ValueError:
-        new_exp = (datetime.now() + timedelta(days=int(days))).strftime("%Y-%m-%d")
-
-    subprocess.run(f"usermod -e {new_exp} {user}", shell=True)
-    subprocess.run(f"passwd -u {user}", shell=True, capture_output=True)
-
-
-    # Update stored expiry
-    db_file = f"/etc/nexus_bot/ssh_accounts/{user}.txt"
-    if os.path.exists(db_file):
-        with open(db_file, 'r') as f:
-            db_lines = f.readlines()
-        with open(db_file, 'w') as f:
-            for l in db_lines:
-                f.write(f"expiry={new_exp}
-" if l.startswith("expiry=") else l)
-
-    # --- SYNC WITH WEB PANEL ---
-    try:
-        import urllib.request, json
-        port = 2087
-        try:
-            with open('/etc/nexus-tunnel-web/config.json', 'r') as cf:
-                config_web = json.load(cf)
-                if 'port' in config_web: port = config_web['port']
-        except: pass
-        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/clients/sync", method="POST")
-        req.add_header('Content-Type', 'application/json')
-        data = json.dumps({"username": user, "protocol": "ssh", "password": "", "expiry": new_exp, "uuid": ""}).encode('utf-8')
-        urllib.request.urlopen(req, data=data, timeout=2)
-    except Exception as e:
-        pass
-    # ---------------------------
-
-
-    ok, details = get_ssh_account_details(user)
-    if ok:
-        renewal_header = (
-            f"✅ <b>COMPTE SSH RENOUVELÉ</b>\n"
-            f"📅 <b>Ancienne expiration:</b> {current_exp} → <b>{new_exp}</b>\n\n"
-        )
-        return True, renewal_header + details
+def get_ssh_account_details(user):
+    path = f"{DB_DIR}/{user}.txt"
+    if not os.path.exists(path):
+        return False, f"❌ Compte SSH <code>{user}</code> introuvable."
+    data = {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            if "=" in line:
+                k, v = line.rstrip().split("=", 1)
+                data[k] = v
+    domain, pub_key, ns_domain, myip = _server_info()
     return True, (
-        f"✅ <b>COMPTE SSH RENOUVELÉ</b>\n\n"
+        "╭▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬╮\n"
+        "┃ <b>SSH ACCOUNT DETAILS</b>\n"
+        "╰▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬╯\n"
         f"👤 <b>Username:</b> <code>{user}</code>\n"
-        f"📅 <b>Ancienne expiration:</b> {current_exp}\n"
-        f"➕ <b>Jours ajoutés:</b> {days}\n"
-        f"📅 <b>Nouvelle expiration:</b> {new_exp}\n"
+        f"🔑 <b>Password:</b> <code>{data.get('password','N/A')}</code>\n"
+        f"⏳ <b>Expiry Date:</b> <code>{data.get('expiry','N/A')}</code>\n"
+        f"🖥️ <b>Host/IP:</b> <code>{myip}</code>\n"
+        f"🌐 <b>Domain:</b> <code>{domain}</code>\n"
+        f"⚓ <b>NS Domain:</b> <code>{ns_domain}</code>\n"
+        f"🐌 <b>Slow DNS PUB:</b>\n<code>{pub_key}</code>"
     )
 
-def delete_ssh_account(user):
-    if subprocess.run(f"id {user}", shell=True, capture_output=True).returncode != 0:
+def renew_ssh_account(user, days):
+    if not _valid_user(user) or subprocess.run(["id", user], capture_output=True).returncode != 0:
         return False, f"❌ Utilisateur <code>{user}</code> introuvable."
+    try:
+        days = int(days)
+        if days <= 0: raise ValueError
+    except ValueError:
+        return False, "❌ La durée doit être un nombre positif."
 
-    subprocess.run(f"pkill -u {user}", shell=True, capture_output=True)
-    subprocess.run(f"userdel -r {user}", shell=True, capture_output=True)
+    path = f"{DB_DIR}/{user}.txt"
+    current = None
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("expiry="):
+                    current = line.strip().split("=",1)[1]
+                    break
+    try:
+        base = datetime.strptime(current, "%Y-%m-%d") if current else datetime.now()
+        if base < datetime.now(): base = datetime.now()
+    except ValueError:
+        base = datetime.now()
+    new_exp = (base + timedelta(days=days)).strftime("%Y-%m-%d")
 
-    db_file = f"/etc/nexus_bot/ssh_accounts/{user}.txt"
-    if os.path.exists(db_file):
-        os.remove(db_file)
+    subprocess.run(["usermod", "-e", new_exp, user], capture_output=True)
+    subprocess.run(["passwd", "-u", user], capture_output=True)
 
-    return True, f"🗑️ <b>Compte SSH <code>{user}</code> supprimé avec succès.</b>"
+    if os.path.exists(path):
+        lines = open(path, encoding="utf-8").readlines()
+        with open(path, "w", encoding="utf-8") as f:
+            for line in lines:
+                f.write(f"expiry={new_exp}\n" if line.startswith("expiry=") else line)
+
+    _sync_web(user, "", new_exp)
+    return True, f"✅ <b>COMPTE SSH RENOUVELÉ</b>\n📅 Nouvelle expiration : <code>{new_exp}</code>"
+
+def delete_ssh_account(user):
+    if not _valid_user(user) or subprocess.run(["id", user], capture_output=True).returncode != 0:
+        return False, f"❌ Utilisateur <code>{user}</code> introuvable."
+    subprocess.run(["pkill", "-u", user], capture_output=True)
+    subprocess.run(["userdel", "-r", user], capture_output=True)
+    path = f"{DB_DIR}/{user}.txt"
+    if os.path.exists(path): os.remove(path)
+    return True, f"🗑️ <b>Compte SSH <code>{user}</code> supprimé.</b>"
 
 def lock_ssh_account(user):
-    if subprocess.run(f"id {user}", shell=True, capture_output=True).returncode != 0:
+    if subprocess.run(["id", user], capture_output=True).returncode != 0:
         return False, f"❌ Utilisateur <code>{user}</code> introuvable."
-    subprocess.run(f"passwd -l {user}", shell=True, capture_output=True)
+    subprocess.run(["passwd", "-l", user], capture_output=True)
     return True, f"🔒 <b>Compte <code>{user}</code> verrouillé.</b>"
 
 def unlock_ssh_account(user):
-    if subprocess.run(f"id {user}", shell=True, capture_output=True).returncode != 0:
+    if subprocess.run(["id", user], capture_output=True).returncode != 0:
         return False, f"❌ Utilisateur <code>{user}</code> introuvable."
-    subprocess.run(f"passwd -u {user}", shell=True, capture_output=True)
+    subprocess.run(["passwd", "-u", user], capture_output=True)
     return True, f"🔓 <b>Compte <code>{user}</code> déverrouillé.</b>"
 
 def list_ssh_accounts():
-    cmd = "awk -F: '($3 >= 1000 && $1 != \"nobody\") {print $1}' /etc/passwd"
-    res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    users = [u for u in res.stdout.strip().split('\n') if u]
+    users = get_ssh_usernames()
     if not users:
         return "📋 Aucun compte SSH trouvé."
-
     msg = "📋 <b>LISTE DES COMPTES SSH:</b>\n\n"
-    for u in users:
-        exp_cmd = f"chage -l {u} | grep 'Account expires' | awk -F': ' '{{print $2}}'"
-        exp_date = subprocess.run(exp_cmd, shell=True, capture_output=True, text=True).stdout.strip()
-        status_cmd = f"passwd -S {u} | awk '{{print $2}}'"
-        status = subprocess.run(status_cmd, shell=True, capture_output=True, text=True).stdout.strip()
-        lock_icon = "🔒" if status == "L" else "🔓"
-        msg += f"{lock_icon} <code>{u}</code> | Exp: <i>{exp_date}</i>\n"
-    total = len(users)
-    msg += f"\n📊 <b>Total:</b> {total} compte(s)"
-    return msg
+    for user in users:
+        ok, details = get_ssh_account_details(user)
+        msg += f"👤 <code>{user}</code>\n"
+    return msg + f"\n📊 <b>Total:</b> {len(users)} compte(s)"
