@@ -70,14 +70,42 @@ def show(call,text,markup):
         bot.send_message(call.message.chat.id,text,parse_mode="HTML",reply_markup=markup)
 
 def send_home(chat_id):
-    bot.send_photo(chat_id,MENU_IMAGE_URL,caption="<b>💻 TOM_TUNNEL SERVER</b>\nSélectionnez un module :",parse_mode="HTML",reply_markup=home_markup())
+    """Affiche le menu principal. Si Telegram ne peut pas récupérer
+    l'image distante, le menu texte est envoyé automatiquement."""
+    markup = home_markup()
+    caption = "<b>💻 TOM_TUNNEL SERVER</b>\nSélectionnez un module :"
+    try:
+        bot.send_photo(
+            chat_id,
+            MENU_IMAGE_URL,
+            caption=caption,
+            parse_mode="HTML",
+            reply_markup=markup
+        )
+    except Exception as exc:
+        logging.warning("Image du menu indisponible: %s", exc)
+        bot.send_message(
+            chat_id,
+            caption,
+            parse_mode="HTML",
+            reply_markup=markup
+        )
 
 @bot.message_handler(commands=["start"])
 def start(message):
     if not is_admin(message.from_user.id):
         bot.reply_to(message,"⛔ Accès refusé.")
         return
-    send_home(message.chat.id)
+    try:
+        send_home(message.chat.id)
+    except Exception:
+        logging.exception("Erreur pendant /start")
+        bot.send_message(
+            message.chat.id,
+            "<b>💻 TOM_TUNNEL SERVER</b>\nSélectionnez un module :",
+            parse_mode="HTML",
+            reply_markup=home_markup()
+        )
 
 @bot.callback_query_handler(func=lambda c:c.data=="action_home")
 def home(c):
