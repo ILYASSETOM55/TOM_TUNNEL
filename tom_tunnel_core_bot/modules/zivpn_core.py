@@ -1,233 +1,150 @@
-import subprocess
 import os
+import re
+import subprocess
 from datetime import datetime, timedelta
+
+DB_FILE = "/etc/zivpn/user.db"
+CONF_FILE = "/etc/zivpn/config.json"
+META_DIR = "/etc/tom_tunnel_bot/zivpn_accounts"
 
 def get_file(path, default="NON_DEFINI"):
     try:
-        with open(path, 'r') as f: return f.read().strip()
-    except:
+        return open(path, encoding="utf-8").read().strip()
+    except Exception:
         return default
 
+def _valid_user(user):
+    return bool(re.fullmatch(r"[A-Za-z0-9._-]{1,32}", user or ""))
+
 def create_zivpn_account(user, password, days, created_by_id=None):
-    db_file = '/etc/zivpn/user.db'
-    conf_file = '/etc/zivpn/config.json'
-
-    if not os.path.exists(conf_file):
-        return False, "❌ Fichier config ZIVPN introuvable. Le VPS est-il bien configuré ?"
-
-    # Vérification des doublons
+    if not _valid_user(user) or not password:
+        return False, "❌ Nom d'utilisateur ou mot de passe invalide."
+    if not os.path.exists(CONF_FILE):
+        return False, "❌ Fichier config ZIVPN introuvable."
     try:
-        with open(db_file, 'r') as f:
-            content = f.read()
-            if user in content or password in content:
-                return False, "❌ Nom d'utilisateur ou Mot de passe déjà utilisé."
-    except Exception:
-        pass
+        days=int(days)
+        if days <= 0: raise ValueError
+    except ValueError:
+        return False, "❌ La durée doit être un nombre positif."
 
-    days = int(days)
-    exp_date = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d")
+    existing=[]
+    if os.path.exists(DB_FILE):
+        existing=open(DB_FILE,encoding="utf-8").read()
+        if user in existing or password in existing:
+            return False, "❌ Nom d'utilisateur ou mot de passe déjà utilisé."
 
-    # Injection dans le JSON ZIVPN
-    with open(conf_file, 'r') as f:
-        lines = f.readlines()
-
-    new_lines = []
+    expiry=(datetime.now()+timedelta(days=days)).strftime("%Y-%m-%d")
+    with open(CONF_FILE,encoding="utf-8") as f: lines=f.readlines()
+    new=[]; inserted=False
     for line in lines:
-        new_lines.append(line)
-        if '"config": [' in line:
-            new_lines.append(f'      "{password}",\n')
+        new.append(line)
+        if '"config": [' in line and not inserted:
+            new.append(f'      "{password}",\n')
+            inserted=True
+    if not inserted:
+        return False, '❌ Tableau "config" introuvable dans ZIVPN.'
+    raw="".join(new)
+    raw=re.sub(r',(\s*\])',r'\1',raw)
+    with open(CONF_FILE,"w",encoding="utf-8") as f: f.write(raw)
 
-    with open(conf_file, 'w') as f:
-        f.writelines(new_lines)
-
-    # Nettoyage de la virgule finale JSON
-    with open(conf_file, 'r') as f:
-        raw = f.read()
-    import re
-    raw = re.sub(r',(\s*\])', r'\1', raw)
-    with open(conf_file, 'w') as f:
-        f.write(raw)
-
-    # Ajout dans la base de données
-    with open(db_file, 'a') as f:
-        f.write(f"{user} {password} {exp_date}\n")
-
-    subprocess.run("systemctl restart zivpn", shell=True)
-
-    # Enregistrement avec createdById
-    meta_dir = '/etc/nexus_bot/zivpn_accounts'
-    os.makedirs(meta_dir, exist_ok=True)
-    with open(f"{meta_dir}/{user}.txt", 'w') as f:
-        f.write(f"username={user}\npassword={password}\nexpiry={exp_date}\ncreatedById={created_by_id}\ncreatedAt={datetime.utcnow().isoformat()}Z\nprotocol=zivpn\nstatus=active\n")
-
-    domain = get_file('/etc/xray/domain', 'votre-domaine.com')
-    myip = subprocess.getoutput("wget -qO- ipv4.icanhazip.com 2>/dev/null || curl -s ipv4.icanhazip.com")
-
-    msg = (
-        f"╭▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬╮\n"
-        f"┃ <b>ZIVPN ACCOUNT DETAILS</b>\n"
-        f"╰▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬╯\n"
+    os.makedirs(os.path.dirname(DB_FILE),exist_ok=True)
+    with open(DB_FILE,"a",encoding="utf-8") as f:
+        f.write(f"{user} {password} {expiry}\n")
+    os.makedirs(META_DIR,exist_ok=True)
+    with open(f"{META_DIR}/{user}.txt","w",encoding="utf-8") as f:
+        f.write(
+            f"username={user}\npassword={password}\nexpiry={expiry}\n"
+            f"createdById={created_by_id}\ncreatedAt={datetime.utcnow().isoformat()}Z\n"
+            "protocol=zivpn\nstatus=active\n"
+        )
+    subprocess.run(["systemctl","restart","zivpn"],capture_output=True)
+    domain=get_file("/etc/xray/domain","votre-domaine.com")
+    ip=subprocess.getoutput("wget -qO- ipv4.icanhazip.com 2>/dev/null || curl -s ipv4.icanhazip.com")
+    return True, (
+        "╭▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬╮\n┃ <b>ZIVPN ACCOUNT</b>\n╰▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬╯\n"
         f"👤 <b>Username:</b> <code>{user}</code>\n"
         f"🔑 <b>Password:</b> <code>{password}</code>\n"
-        f"⏳ <b>Expiry Date:</b> {exp_date}\n"
-        f"🖥️ <b>IPV4:</b> <code>{myip}</code>\n"
-        f"🌐 <b>Domain:</b> <code>{domain}</code>\n"
-        f"▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"
+        f"⏳ <b>Expiry:</b> <code>{expiry}</code>\n"
+        f"🖥️ <b>IPv4:</b> <code>{ip}</code>\n"
+        f"🌐 <b>Domain:</b> <code>{domain}</code>"
     )
-    return True, msg
 
 def get_zivpn_usernames():
-    meta_dir = '/etc/nexus_bot/zivpn_accounts'
-    if not os.path.exists(meta_dir):
-        return []
-    return [f.replace('.txt', '') for f in sorted(os.listdir(meta_dir)) if f.endswith('.txt')]
+    if not os.path.isdir(META_DIR): return []
+    return [x[:-4] for x in sorted(os.listdir(META_DIR)) if x.endswith(".txt")]
 
 def get_zivpn_account_details(user):
-    meta_file = f"/etc/nexus_bot/zivpn_accounts/{user}.txt"
-    if not os.path.exists(meta_file):
+    path=f"{META_DIR}/{user}.txt"
+    if not os.path.exists(path):
         return False, f"❌ Compte ZIVPN <code>{user}</code> introuvable."
-    data = {}
-    with open(meta_file, 'r') as f:
-        for line in f:
-            if '=' in line:
-                k, v = line.strip().split('=', 1)
-                data[k] = v
-    password = data.get('password', 'N/A')
-    exp_date = data.get('expiry', 'N/A')
-    domain = get_file('/etc/xray/domain', 'votre-domaine.com')
-    myip = subprocess.getoutput("wget -qO- ipv4.icanhazip.com 2>/dev/null || curl -s ipv4.icanhazip.com")
-    msg = (
-        f"┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n"
-        f"┃ <b>ZIVPN ACCOUNT DETAILS</b>\n"
-        f"┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n"
+    data={}
+    for line in open(path,encoding="utf-8"):
+        if "=" in line:
+            k,v=line.rstrip().split("=",1); data[k]=v
+    ip=subprocess.getoutput("wget -qO- ipv4.icanhazip.com 2>/dev/null || curl -s ipv4.icanhazip.com")
+    return True, (
+        "┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n┃ <b>ZIVPN ACCOUNT</b>\n┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n"
         f"👤 <b>Username:</b> <code>{user}</code>\n"
-        f"🔑 <b>Password:</b> <code>{password}</code>\n"
-        f"⏳ <b>Expiry Date:</b> {exp_date}\n"
-        f"🖥️ <b>IPV4:</b> <code>{myip}</code>\n"
-        f"🌐 <b>Domain:</b> <code>{domain}</code>\n"
-        f"▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"
+        f"🔑 <b>Password:</b> <code>{data.get('password','N/A')}</code>\n"
+        f"⏳ <b>Expiry:</b> <code>{data.get('expiry','N/A')}</code>\n"
+        f"🖥️ <b>IPv4:</b> <code>{ip}</code>"
     )
-    return True, msg
 
 def renew_zivpn_account(user, days):
-    db_file = '/etc/zivpn/user.db'
-    if not os.path.exists(db_file):
-        return False, "❌ Base ZIVPN introuvable."
-
-    with open(db_file, 'r') as f:
-        lines = f.readlines()
-
-    current_exp = None
-    new_lines = []
-    found = False
-    days = int(days)
-
+    if not os.path.exists(DB_FILE): return False, "❌ Base ZIVPN introuvable."
+    try: days=int(days)
+    except ValueError: return False, "❌ Durée invalide."
+    lines=open(DB_FILE,encoding="utf-8").readlines()
+    new=[]; found=False; current=None
     for line in lines:
-        parts = line.strip().split()
-        if len(parts) >= 3 and parts[0] == user:
-            current_exp = parts[2]
+        p=line.strip().split()
+        if len(p)>=3 and p[0]==user:
+            found=True; current=p[2]
             try:
-                base_date = datetime.strptime(current_exp, "%Y-%m-%d")
-                if base_date < datetime.now():
-                    base_date = datetime.now()
-            except ValueError:
-                base_date = datetime.now()
-            new_exp = (base_date + timedelta(days=days)).strftime("%Y-%m-%d")
-            new_lines.append(f"{parts[0]} {parts[1]} {new_exp}\n")
-            found = True
-        else:
-            new_lines.append(line)
-
-    if not found:
-        return False, f"❌ Utilisateur ZIVPN <code>{user}</code> introuvable."
-
-    with open(db_file, 'w') as f:
-        f.writelines(new_lines)
-
-    # Update meta file
-    meta_file = f"/etc/nexus_bot/zivpn_accounts/{user}.txt"
-    if os.path.exists(meta_file):
-        with open(meta_file, 'r') as f:
-            meta_lines = f.readlines()
-        with open(meta_file, 'w') as f:
-            for l in meta_lines:
-                f.write(f"expiry={new_exp}\n" if l.startswith("expiry=") else l)
-
-    ok, details = get_zivpn_account_details(user)
-    if ok:
-        renewal_header = (
-            f"✅ <b>COMPTE ZIVPN RENOUVELÉ</b>\n"
-            f"📅 <b>Ancienne expiration:</b> {current_exp} → <b>{new_exp}</b>\n\n"
-        )
-        return True, renewal_header + details
-    return True, (
-        f"✅ <b>COMPTE ZIVPN RENOUVELÉ</b>\n\n"
-        f"👤 <b>Username:</b> <code>{user}</code>\n"
-        f"📅 <b>Ancienne expiration:</b> {current_exp}\n"
-        f"➕ <b>Jours ajoutés:</b> {days}\n"
-        f"📅 <b>Nouvelle expiration:</b> {new_exp}\n"
-    )
+                base=datetime.strptime(current,"%Y-%m-%d")
+                if base<datetime.now(): base=datetime.now()
+            except ValueError: base=datetime.now()
+            exp=(base+timedelta(days=days)).strftime("%Y-%m-%d")
+            new.append(f"{p[0]} {p[1]} {exp}\n")
+        else: new.append(line)
+    if not found: return False, f"❌ Utilisateur ZIVPN <code>{user}</code> introuvable."
+    open(DB_FILE,"w",encoding="utf-8").writelines(new)
+    meta=f"{META_DIR}/{user}.txt"
+    if os.path.exists(meta):
+        ml=open(meta,encoding="utf-8").readlines()
+        with open(meta,"w",encoding="utf-8") as f:
+            for line in ml: f.write(f"expiry={exp}\n" if line.startswith("expiry=") else line)
+    subprocess.run(["systemctl","restart","zivpn"],capture_output=True)
+    return True, f"✅ <b>COMPTE ZIVPN RENOUVELÉ</b>\n📅 Nouvelle expiration : <code>{exp}</code>"
 
 def delete_zivpn_account(user):
-    db_file = '/etc/zivpn/user.db'
-    conf_file = '/etc/zivpn/config.json'
-
-    if not os.path.exists(db_file):
-        return False, "❌ Base ZIVPN introuvable."
-
-    with open(db_file, 'r') as f:
-        lines = f.readlines()
-
-    password = None
-    new_lines = []
+    if not os.path.exists(DB_FILE): return False, "❌ Base ZIVPN introuvable."
+    lines=open(DB_FILE,encoding="utf-8").readlines()
+    new=[]; password=None
     for line in lines:
-        parts = line.strip().split()
-        if len(parts) >= 2 and parts[0] == user:
-            password = parts[1]
-        else:
-            new_lines.append(line)
-
-    if password is None:
-        return False, f"❌ Utilisateur ZIVPN <code>{user}</code> introuvable."
-
-    with open(db_file, 'w') as f:
-        f.writelines(new_lines)
-
-    # Supprimer le mot de passe de la config JSON
-    if os.path.exists(conf_file):
-        with open(conf_file, 'r') as f:
-            content = f.read()
-        import re
-        content = re.sub(rf'[ \t]*"{re.escape(password)}",?\n?', '', content)
-        content = re.sub(r',(\s*\])', r'\1', content)
-        with open(conf_file, 'w') as f:
-            f.write(content)
-
-    subprocess.run("systemctl restart zivpn", shell=True)
-
-    meta_file = f"/etc/nexus_bot/zivpn_accounts/{user}.txt"
-    if os.path.exists(meta_file):
-        os.remove(meta_file)
-
-    return True, f"🗑️ <b>Compte ZIVPN <code>{user}</code> supprimé avec succès.</b>"
+        p=line.strip().split()
+        if len(p)>=2 and p[0]==user: password=p[1]
+        else: new.append(line)
+    if password is None: return False, f"❌ Utilisateur ZIVPN <code>{user}</code> introuvable."
+    open(DB_FILE,"w",encoding="utf-8").writelines(new)
+    if os.path.exists(CONF_FILE):
+        raw=open(CONF_FILE,encoding="utf-8").read()
+        raw=re.sub(rf'[ \t]*"{re.escape(password)}",?\n?', '', raw)
+        raw=re.sub(r',(\s*\])',r'\1',raw)
+        open(CONF_FILE,"w",encoding="utf-8").write(raw)
+    subprocess.run(["systemctl","restart","zivpn"],capture_output=True)
+    meta=f"{META_DIR}/{user}.txt"
+    if os.path.exists(meta): os.remove(meta)
+    return True, f"🗑️ <b>Compte ZIVPN <code>{user}</code> supprimé.</b>"
 
 def list_zivpn_accounts():
-    db_file = '/etc/zivpn/user.db'
-    if not os.path.exists(db_file):
-        return "📋 Aucun compte ZIVPN trouvé."
-
-    with open(db_file, 'r') as f:
-        lines = f.readlines()
-
-    if not lines:
-        return "📋 Aucun compte ZIVPN trouvé."
-
-    msg = "📋 <b>LISTE DES COMPTES ZIVPN:</b>\n\n"
-    count = 0
+    if not os.path.exists(DB_FILE): return "📋 Aucun compte ZIVPN trouvé."
+    lines=[x for x in open(DB_FILE,encoding="utf-8").readlines() if x.strip()]
+    if not lines: return "📋 Aucun compte ZIVPN trouvé."
+    msg="📋 <b>LISTE DES COMPTES ZIVPN:</b>\n\n"
+    count=0
     for line in lines:
-        parts = line.strip().split()
-        if len(parts) >= 3:
-            msg += f"👤 <code>{parts[0]}</code> | Pass: <code>{parts[1]}</code> | Exp: <i>{parts[2]}</i>\n"
-            count += 1
-    msg += f"\n📊 <b>Total:</b> {count} compte(s)"
-    return msg
+        p=line.strip().split()
+        if len(p)>=3:
+            msg+=f"👤 <code>{p[0]}</code> | Exp: <i>{p[2]}</i>\n"; count+=1
+    return msg+f"\n📊 <b>Total:</b> {count}"
