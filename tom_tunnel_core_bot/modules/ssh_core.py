@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 DB_DIR = Path("/etc/tom_tunnel_bot/ssh_accounts")
-LEGACY_DB_DIR = Path("/etc/nexus_bot/ssh_accounts")
-WEB_CONFIG = Path("/etc/nexus-tunnel-web/config.json")
+LEGACY_DB_DIR = Path("/etc/tom_tunnel_bot/ssh_accounts")
+WEB_CONFIG = Path("/etc/tom_tunnel-web/config.json")
 USER_RE = re.compile(r"^[A-Za-z0-9._-]{1,32}$")
 
 
