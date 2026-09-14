@@ -429,12 +429,6 @@ def create_ssh_account(
 
         "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
 
-        f"🌐 <b>UDP Custom</b> "
-        f"{_esc(domain)}:1-65535@tom:"
-        f"https://t.me/FREE_INTERNET237\n"
-
-        "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
-
         f"💻 <b>PAYLOAD:</b> "
         f"<code>"
         f"GET / HTTP/1.1[crlf]"
