@@ -73,7 +73,7 @@ fi
 clear
 
 # ═══════════ BANNER ═══════════
-echo -e "${MAGENTA}${BOLD}"
+echo -e "${GRUEN}${BOLD}"
 echo -e "     ██╗ ██████╗ ███████╗██╗         ████████╗ ██████╗ ███╗   ███╗"
 echo -e "     ██║██╔═══██╗██╔════╝██║         ╚══██╔══╝██╔═══██╗████╗ ████║"
 echo -e "     ██║██║   ██║█████╗  ██║            ██║   ██║   ██║██╔████╔██║"
@@ -119,7 +119,7 @@ echo -e "   ${GREEN}[08]${NC} ${WHITE}• DOMAIN PANEL${NC}       ${GREEN}[12]${
 echo -e "   ${GREEN}[09]${NC} ${WHITE}• IPV6 PANEL${NC}         ${GREEN}[13]${NC} ${WHITE}• CLEAN VPS LOGS${NC}"
 echo -e "   ${GREEN}[10]${NC} ${WHITE}• VPS STATUS${NC}         ${GREEN}[14]${NC} ${WHITE}• TOM_TUNNEL BOT${NC}"
 echo -e "   ${GREEN}[15]${NC} ${WHITE}• UNINSTALL TOM_TUNNEL${NC}"
-echo -e "   ${GREEN}[16]${NC} ${WHITE}• FAST DNS MENU${NC}       ${GREEN}[17]${NC} ${WHITE}• V2RAY-DNS MENU${NC}"
+echo -e "   ${GREEN}[16]${NC} ${WHITE}• FAST DNS MENU${NC}"
 echo -e "   ${GREEN}[99]${NC} ${WHITE}• UPDATE TOM_TUNNEL${NC}"
 echo -e "   ${GREEN}[00]${NC} ${WHITE}• EXIT${NC}               ${GREEN}[88]${NC} ${WHITE}• REBOOT VPS${NC}"
 echo -e "${CYAN}▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬${NC}"
@@ -165,8 +165,7 @@ case $opt in
 14) clear ; tgbot ;;
 15) clear ; uninstall ;;
 16) clear ; fastdns ;;
-17) clear ; v2ray-dns ;;
- 18) clear ; web ;;
+18) clear ; web ;;
 88) reboot ;;
 99) clear ; update ;;
 0 | 00) exit ;;
