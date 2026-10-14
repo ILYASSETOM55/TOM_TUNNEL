@@ -1,6 +1,4 @@
-#!/bin/bash
-# ZIVPN account manager (version corrigée)
-
+clear
 LN=$'\033[34m'
 BG=$'\033[44m'
 NC=$'\033[0m'
