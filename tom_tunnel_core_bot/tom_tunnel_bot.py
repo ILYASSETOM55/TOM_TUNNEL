@@ -3,6 +3,9 @@ import json
 import logging
 import os
 import subprocess
+import sys
+import threading
+import time
 
 import telebot
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -10,6 +13,7 @@ from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 from modules import admin_core, ssh_core, system_core, xray_core, zivpn_core
 
 CONFIG_FILE = "/etc/tom_tunnel_bot/config.json"
+STATE_FILE = "/etc/tom_tunnel_bot/state.json"
 MENU_IMAGE_URL = "https://github.com/user-attachments/assets/3283223c-3cef-4f66-89b8-c061027fb12e"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -36,13 +40,89 @@ ICONS = {"ssh": "📡", "vmess": "🛡️", "vless": "🛡️",
          "trojan": "🔥", "socks": "🔌", "zivpn": "📱"}
 
 
+# ───────────────────────── ÉTAT DU BOT (utilisateurs, maintenance) ─────────────────────────
+
+_state_lock = threading.Lock()
+_pending_announce = {}
+
+
+def _load_state():
+    try:
+        with open(STATE_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        data = {}
+    data.setdefault("users", [])
+    data.setdefault("maintenance", False)
+    return data
+
+
+def _save_state(data):
+    tmp = STATE_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    os.replace(tmp, STATE_FILE)
+
+
+def register_user(user_id):
+    try:
+        uid = int(user_id)
+        with _state_lock:
+            st = _load_state()
+            if uid not in st["users"]:
+                st["users"].append(uid)
+                _save_state(st)
+    except Exception as exc:
+        log.warning("register_user: %s", exc)
+
+
+def is_maintenance():
+    with _state_lock:
+        return bool(_load_state().get("maintenance"))
+
+
+def toggle_maintenance():
+    with _state_lock:
+        st = _load_state()
+        st["maintenance"] = not st["maintenance"]
+        _save_state(st)
+        return st["maintenance"]
+
+
+def _recipients():
+    with _state_lock:
+        ids = set(_load_state()["users"])
+    cfg = admin_core.get_config()
+    if cfg.get("super_admin") is not None:
+        ids.add(int(cfg["super_admin"]))
+    for key in ("admins", "super_admins"):
+        for a in cfg.get(key, []):
+            try:
+                ids.add(int(a))
+            except (TypeError, ValueError):
+                pass
+    return sorted(ids)
+
+
+# ───────────────────────── DROITS ─────────────────────────
+
+def _is_super(user_id):
+    try:
+        return bool(admin_core.is_super_admin(int(user_id)))
+    except Exception:
+        return False
+
+
 def is_admin(user_id):
     cfg = admin_core.get_config()
     try:
         uid = int(user_id)
     except (TypeError, ValueError):
         return False
-    return uid == cfg.get("super_admin") or uid in cfg.get("admins", []) or uid in cfg.get("super_admins", [])
+    is_sup = uid == cfg.get("super_admin") or uid in cfg.get("super_admins", [])
+    if is_maintenance() and not is_sup:
+        return False
+    return is_sup or uid in cfg.get("admins", [])
 
 
 def _safe(v):
@@ -51,7 +131,7 @@ def _safe(v):
 
 # ───────────────────────── STYLE DES MENUS ─────────────────────────
 
-def home_markup():
+def home_markup(user_id=None):
     m = InlineKeyboardMarkup()
     m.row(B("📡 SSH / WS", callback_data="menu_ssh"),
           B("📱 ZIVPN", callback_data="menu_zivpn"))
@@ -62,6 +142,8 @@ def home_markup():
     m.row(B("📊 Statut VPS", callback_data="menu_status"),
           B("🧹 Nettoyer logs", callback_data="menu_log"))
     m.row(B("👑 Administrateurs", callback_data="menu_admins"))
+    if user_id is not None and _is_super(user_id):
+        m.row(B("⚡ SUPER ADMIN", callback_data="menu_super"))
     m.row(B("🔄 Redémarrer le VPS", callback_data="action_reboot"))
     return m
 
@@ -110,9 +192,9 @@ def _send_home(chat_id):
     )
     try:
         bot.send_photo(chat_id, MENU_IMAGE_URL, caption=caption,
-                       parse_mode="HTML", reply_markup=home_markup())
+                       parse_mode="HTML", reply_markup=home_markup(chat_id))
     except Exception:
-        bot.send_message(chat_id, caption, parse_mode="HTML", reply_markup=home_markup())
+        bot.send_message(chat_id, caption, parse_mode="HTML", reply_markup=home_markup(chat_id))
 
 
 def _ask(chat_id, prompt, handler, *args):
@@ -125,13 +207,17 @@ def _result(message, result):
         ok, text = result
     except Exception as exc:
         text = f"❌ Erreur interne : <code>{_safe(exc)}</code>"
-    bot.send_message(message.chat.id, str(text), parse_mode="HTML", reply_markup=home_markup())
+    bot.send_message(message.chat.id, str(text), parse_mode="HTML", reply_markup=home_markup(message.chat.id))
 
 
 @bot.message_handler(commands=["start"])
 def start(message):
+    register_user(message.from_user.id)
     if not is_admin(message.from_user.id):
-        bot.reply_to(message, "⛔ Accès refusé.")
+        if is_maintenance():
+            bot.reply_to(message, "🛠️ Bot en maintenance. Réessayez plus tard.")
+        else:
+            bot.reply_to(message, "⛔ Accès refusé.")
         return
     _send_home(message.chat.id)
 
@@ -174,7 +260,7 @@ def add_ssh(c):
 def _ssh_user(m, creator):
     text = (m.text or "").strip()
     if not text:
-        bot.send_message(m.chat.id, "❌ Nom vide.", reply_markup=home_markup())
+        bot.send_message(m.chat.id, "❌ Nom vide.", reply_markup=home_markup(m.chat.id))
         return
     _ask(m.chat.id, "🔑 <b>Mot de passe SSH :</b>", _ssh_pass, text, creator)
 
@@ -441,7 +527,7 @@ def reboot(c):
     subprocess.Popen(["systemctl", "reboot"])
 
 
-# ───────────────────────── ADMINS ─────────────────────────
+ # ───────────────────────── ADMINS ─────────────────────────
 
 @bot.callback_query_handler(func=lambda c: c.data == "menu_admins")
 def admins(c):
@@ -481,7 +567,7 @@ def req_add_admin(c):
 def _process_add_admin(m, requester):
     target = (m.text or "").strip()
     if not target.isdigit():
-        bot.send_message(m.chat.id, "❌ ID invalide.", reply_markup=home_markup())
+        bot.send_message(m.chat.id, "❌ ID invalide.", reply_markup=home_markup(m.chat.id))
         return
     if admin_core.is_super_admin(requester):
         _result(m, admin_core.approve_new_admin(int(target)))
@@ -491,7 +577,7 @@ def _process_add_admin(m, requester):
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(B("✅ Approuver", callback_data=f"adm:add:{target}:{requester}"),
                B("❌ Refuser", callback_data=f"adm:cancel:{target}:{requester}"))
-    bot.send_message(m.chat.id, "⏳ Demande envoyée au Super Admin.", reply_markup=home_markup())
+    bot.send_message(m.chat.id, "⏳ Demande envoyée au Super Admin.", reply_markup=home_markup(m.chat.id))
     bot.send_message(super_id,
                      f"⚠️ <b>DEMANDE ADMIN</b>\n\nAdmin <code>{requester}</code> demande l'ajout de <code>{target}</code>.",
                      parse_mode="HTML", reply_markup=markup)
@@ -505,7 +591,7 @@ def req_del_admin(c):
 def _process_del_admin(m, requester):
     target = (m.text or "").strip()
     if not target.isdigit():
-        bot.send_message(m.chat.id, "❌ ID invalide.", reply_markup=home_markup())
+        bot.send_message(m.chat.id, "❌ ID invalide.", reply_markup=home_markup(m.chat.id))
         return
     if admin_core.is_super_admin(requester):
         _result(m, admin_core.remove_admin(int(target)))
@@ -514,7 +600,7 @@ def _process_del_admin(m, requester):
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(B("✅ Révoquer", callback_data=f"adm:revoke:{target}:{requester}"),
                B("❌ Annuler", callback_data=f"adm:cancel:{target}:{requester}"))
-    bot.send_message(m.chat.id, "⏳ Demande envoyée au Super Admin.", reply_markup=home_markup())
+    bot.send_message(m.chat.id, "⏳ Demande envoyée au Super Admin.", reply_markup=home_markup(m.chat.id))
     bot.send_message(super_id,
                      f"⚠️ <b>DEMANDE RÉVOCATION</b>\n\nAdmin <code>{requester}</code> demande la révocation de <code>{target}</code>.",
                      parse_mode="HTML", reply_markup=markup)
@@ -559,15 +645,229 @@ def admin_approval(c):
         pass
     bot.send_message(c.message.chat.id, text, parse_mode="HTML")
     try:
-        bot.send_message(int(requester), text, parse_mode="HTML", reply_markup=home_markup())
+        bot.send_message(int(requester), text, parse_mode="HTML", reply_markup=home_markup(int(requester)))
     except Exception:
         pass
+
+
+# ───────────────────────── SUPER ADMIN UNIQUEMENT ─────────────────────────
+
+SUPER_ONLY = "⛔ Super Admin uniquement."
+
+
+def super_markup():
+    maint = "🔴 ON" if is_maintenance() else "🟢 OFF"
+    m = InlineKeyboardMarkup()
+    m.row(B("📢 Annonce à tous", callback_data="sa_announce"),
+          B("📩 Message direct", callback_data="sa_dm"))
+    m.row(B("📈 Statistiques", callback_data="sa_stats"),
+          B(f"🛠️ Maintenance : {maint}", callback_data="sa_maint"))
+    m.row(B("♻️ Redémarrer le bot", callback_data="sa_restart"))
+    m.row(B("🏠 Accueil", callback_data="action_home"))
+    return m
+
+
+def _super_text():
+    return (
+        "<b>⚡ ESPACE SUPER ADMIN</b>\n"
+        f"{SEP}\n"
+        "▸ Outils réservés au Super Admin :"
+    )
+
+
+def _announce_format(text):
+    return (
+        "<b>📢 ANNONCE</b>\n"
+        f"{SEP}\n"
+        f"{_safe(text)}\n"
+        f"{SEP}\n"
+        "<i>— TOM_TUNNEL</i>"
+    )
+
+
+def _broadcast(text, targets):
+    sent = failed = 0
+    for uid in targets:
+        try:
+            bot.send_message(uid, text, parse_mode="HTML")
+            sent += 1
+        except Exception:
+            failed += 1
+        time.sleep(0.05)
+    return sent, failed
+
+
+@bot.callback_query_handler(func=lambda c: c.data == "menu_super")
+def menu_super(c):
+    if not _is_super(c.from_user.id):
+        _answer(c, SUPER_ONLY)
+        return
+    _show(c, _super_text(), super_markup())
+
+
+# --- Annonce à tous ---
+
+@bot.callback_query_handler(func=lambda c: c.data == "sa_announce")
+def sa_announce(c):
+    if not _is_super(c.from_user.id):
+        _answer(c, SUPER_ONLY)
+        return
+    _answer(c)
+    _ask(c.message.chat.id, "📢 <b>Écrivez le message d'annonce :</b>", _sa_announce_text)
+
+
+def _sa_announce_text(m):
+    if not _is_super(m.from_user.id):
+        return
+    text = (m.text or "").strip()
+    if not text:
+        bot.send_message(m.chat.id, "❌ Message vide.", reply_markup=super_markup())
+        return
+    if len(text) > 3500:
+        bot.send_message(m.chat.id, "❌ Message trop long (3500 caractères max).", reply_markup=super_markup())
+        return
+    _pending_announce[m.from_user.id] = text
+    kb = InlineKeyboardMarkup()
+    kb.row(B("✅ Envoyer", callback_data="sa_send"),
+           B("❌ Annuler", callback_data="sa_cancel"))
+    bot.send_message(
+        m.chat.id,
+        f"👁️ <b>APERÇU</b>\n{SEP}\n{_announce_format(text)}\n{SEP}\n"
+        f"👥 Destinataires : <b>{len(_recipients())}</b>",
+        parse_mode="HTML", reply_markup=kb)
+
+
+@bot.callback_query_handler(func=lambda c: c.data in {"sa_send", "sa_cancel"})
+def sa_send(c):
+    if not _is_super(c.from_user.id):
+        _answer(c, SUPER_ONLY)
+        return
+    text = _pending_announce.pop(c.from_user.id, None)
+    try:
+        bot.edit_message_reply_markup(c.message.chat.id, c.message.message_id, reply_markup=None)
+    except Exception:
+        pass
+    if c.data == "sa_cancel":
+        _answer(c, "Annulé")
+        bot.send_message(c.message.chat.id, "ℹ️ Annonce annulée.", reply_markup=super_markup())
+        return
+    if not text:
+        _answer(c, "Aucune annonce en attente.")
+        return
+    _answer(c, "📤 Envoi en cours...")
+    bot.send_message(c.message.chat.id, "⏳ <b>Envoi en cours...</b>", parse_mode="HTML")
+    sent, failed = _broadcast(_announce_format(text), _recipients())
+    bot.send_message(
+        c.message.chat.id,
+        f"✅ <b>Annonce envoyée</b>\n{SEP}\n📨 Réussis : <b>{sent}</b>\n⚠️ Échecs : <b>{failed}</b>",
+        parse_mode="HTML", reply_markup=super_markup())
+
+
+# --- Message direct ---
+
+@bot.callback_query_handler(func=lambda c: c.data == "sa_dm")
+def sa_dm(c):
+    if not _is_super(c.from_user.id):
+        _answer(c, SUPER_ONLY)
+        return
+    _answer(c)
+    _ask(c.message.chat.id, "📩 <b>ID Telegram du destinataire :</b>", _sa_dm_id)
+
+
+def _sa_dm_id(m):
+    if not _is_super(m.from_user.id):
+        return
+    target = (m.text or "").strip()
+    if not target.isdigit():
+        bot.send_message(m.chat.id, "❌ ID invalide.", reply_markup=super_markup())
+        return
+    _ask(m.chat.id, "✏️ <b>Écrivez votre message :</b>", _sa_dm_text, int(target))
+
+
+def _sa_dm_text(m, target):
+    if not _is_super(m.from_user.id):
+        return
+    text = (m.text or "").strip()
+    if not text or len(text) > 3500:
+        bot.send_message(m.chat.id, "❌ Message vide ou trop long.", reply_markup=super_markup())
+        return
+    try:
+        bot.send_message(
+            target,
+            f"<b>📩 MESSAGE DU SUPER ADMIN</b>\n{SEP}\n{_safe(text)}",
+            parse_mode="HTML")
+        bot.send_message(m.chat.id, f"✅ Message envoyé à <code>{target}</code>.",
+                         parse_mode="HTML", reply_markup=super_markup())
+    except Exception as exc:
+        bot.send_message(m.chat.id, f"❌ Échec : <code>{_safe(exc)}</code>",
+                         parse_mode="HTML", reply_markup=super_markup())
+
+
+# --- Statistiques ---
+
+def _count(fn, *args):
+    try:
+        return len(fn(*args))
+    except Exception:
+        return "?"
+
+
+@bot.callback_query_handler(func=lambda c: c.data == "sa_stats")
+def sa_stats(c):
+    if not _is_super(c.from_user.id):
+        _answer(c, SUPER_ONLY)
+        return
+    cfg = admin_core.get_config()
+    text = (
+        "<b>📈 STATISTIQUES</b>\n"
+        f"{SEP}\n"
+        f"👥 Utilisateurs du bot : <b>{len(_recipients())}</b>\n"
+        f"👑 Super admins : <b>{len(set([cfg.get('super_admin')] + list(cfg.get('super_admins', []))) - {None})}</b>\n"
+        f"🛡️ Admins : <b>{len(cfg.get('admins', []))}</b>\n"
+        f"🛠️ Maintenance : <b>{'ON' if is_maintenance() else 'OFF'}</b>\n"
+        f"{SEP}\n"
+        f"📡 SSH : <b>{_count(ssh_core.get_ssh_usernames)}</b>\n"
+        f"📱 ZIVPN : <b>{_count(zivpn_core.get_zivpn_usernames)}</b>\n"
+        f"🛡️ VMESS : <b>{_count(xray_core.get_xray_usernames, 'vmess')}</b>\n"
+        f"🛡️ VLESS : <b>{_count(xray_core.get_xray_usernames, 'vless')}</b>\n"
+        f"🔥 TROJAN : <b>{_count(xray_core.get_xray_usernames, 'trojan')}</b>\n"
+        f"🔌 SOCKS : <b>{_count(xray_core.get_xray_usernames, 'socks')}</b>"
+    )
+    m = InlineKeyboardMarkup()
+    m.row(B("🔙 Super Admin", callback_data="menu_super"),
+          B("🏠 Accueil", callback_data="action_home"))
+    _show(c, text, m)
+
+
+# --- Mode maintenance ---
+
+@bot.callback_query_handler(func=lambda c: c.data == "sa_maint")
+def sa_maint(c):
+    if not _is_super(c.from_user.id):
+        _answer(c, SUPER_ONLY)
+        return
+    state = toggle_maintenance()
+    _answer(c, "🛠️ Maintenance activée" if state else "🟢 Maintenance désactivée")
+    _show(c, _super_text(), super_markup())
+
+
+# --- Redémarrage du bot ---
+
+@bot.callback_query_handler(func=lambda c: c.data == "sa_restart")
+def sa_restart(c):
+    if not _is_super(c.from_user.id):
+        _answer(c, SUPER_ONLY)
+        return
+    _answer(c, "♻️ Redémarrage...")
+    bot.send_message(c.message.chat.id, "♻️ <b>Redémarrage du bot...</b>", parse_mode="HTML")
+    time.sleep(1)
+    os.execv(sys.executable, [sys.executable] + sys.argv)
 
 
 @bot.message_handler(func=lambda m: True, content_types=["text"])
 def fallback(message):
     if is_admin(message.from_user.id) and not (message.text or "").startswith("/"):
-        bot.send_message(message.chat.id, "ℹ️ Aucune action en attente.", reply_markup=home_markup())
+        bot.send_message(message.chat.id, "ℹ️ Aucune action en attente.", reply_markup=home_markup(message.chat.id))
 
 
 if __name__ == "__main__":
