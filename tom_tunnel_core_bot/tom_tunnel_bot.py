@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import subprocess
+from pathlib import Path
 
 import telebot
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -11,6 +12,7 @@ from modules import admin_core, ssh_core, system_core, xray_core, zivpn_core
 
 CONFIG_FILE = "/etc/tom_tunnel_bot/config.json"
 MENU_IMAGE_URL = "https://github.com/user-attachments/assets/3283223c-3cef-4f66-89b8-c061027fb12e"
+MENU_IMAGE_FILE = Path(__file__).resolve().parent / "welcome.jpg"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("TOM_TUNNEL_BOT")
@@ -47,11 +49,16 @@ def _safe(v):
 def home_markup():
     m = InlineKeyboardMarkup(row_width=2)
     for label, data in [
-        ("📡 SSH/WS", "menu_ssh"), ("🛡️ VMESS", "menu_vmess"),
-        ("🛡️ VLESS", "menu_vless"), ("🔥 TROJAN", "menu_trojan"),
-        ("🔌 SOCKS", "menu_socks"), ("📱 ZIVPN", "menu_zivpn"),
-        ("📊 VPS STATUS", "menu_status"), ("🧹 CLEAN LOGS", "menu_log"),
-        ("👑 ADMINS", "menu_admins"), ("🔄 REBOOT VPS", "action_reboot")
+        ("🔐 SSH / WebSocket", "menu_ssh"),
+        ("🚀 VMess", "menu_vmess"),
+        ("🛡️ VLESS", "menu_vless"),
+        ("🔥 Trojan", "menu_trojan"),
+        ("🔌 SOCKS Proxy", "menu_socks"),
+        ("📡 ZIVPN", "menu_zivpn"),
+        ("📊 État du VPS", "menu_status"),
+        ("🧹 Nettoyer les logs", "menu_log"),
+        ("👑 Administrateurs", "menu_admins"),
+        ("♻️ Redémarrer le VPS", "action_reboot")
     ]:
         m.add(InlineKeyboardButton(label, callback_data=data))
     return m
@@ -60,15 +67,15 @@ def home_markup():
 def protocol_markup(proto):
     m = InlineKeyboardMarkup(row_width=1)
     m.add(
-        InlineKeyboardButton(f"➕ Créer {proto.upper()}", callback_data=f"add_{proto}"),
-        InlineKeyboardButton(f"🔄 Renouveler {proto.upper()}", callback_data=f"renew_{proto}"),
-        InlineKeyboardButton(f"🗑️ Supprimer {proto.upper()}", callback_data=f"del_{proto}"),
-        InlineKeyboardButton(f"📋 Liste {proto.upper()}", callback_data=f"list_{proto}"),
+        InlineKeyboardButton(f"➕ Créer un compte {proto.upper()}", callback_data=f"add_{proto}"),
+        InlineKeyboardButton(f"♻️ Renouveler {proto.upper()}", callback_data=f"renew_{proto}"),
+        InlineKeyboardButton(f"🗑️ Supprimer un compte", callback_data=f"del_{proto}"),
+        InlineKeyboardButton(f"📋 Liste des comptes", callback_data=f"list_{proto}"),
     )
     if proto == "ssh":
-        m.add(InlineKeyboardButton("🔒 Verrouiller", callback_data="lock_ssh"))
-        m.add(InlineKeyboardButton("🔓 Déverrouiller", callback_data="unlock_ssh"))
-    m.add(InlineKeyboardButton("🔙 Accueil", callback_data="action_home"))
+        m.add(InlineKeyboardButton("🔒 Verrouiller un compte", callback_data="lock_ssh"))
+        m.add(InlineKeyboardButton("🔓 Déverrouiller un compte", callback_data="unlock_ssh"))
+    m.add(InlineKeyboardButton("🏠 Retour au menu", callback_data="action_home"))
     return m
 
 
@@ -92,11 +99,40 @@ def _show(call, text, markup):
 
 
 def _send_home(chat_id):
-    caption = "<b>💻 TOM_TUNNEL SERVER</b>\nSélectionnez un module :"
+    caption = (
+        "🚀 <b>TOM_TUNNEL | PANNEAU VPS</b>\n"
+        "🔐 Bienvenue dans votre espace de gestion VPN.\n\n"
+        "👇 <b>Choisissez un module :</b>"
+    )
+
     try:
-        bot.send_photo(chat_id, MENU_IMAGE_URL, caption=caption, parse_mode="HTML", reply_markup=home_markup())
+        # Priorité à l'image locale, plus fiable qu'une URL distante.
+        if MENU_IMAGE_FILE.is_file():
+            with MENU_IMAGE_FILE.open("rb") as photo:
+                bot.send_photo(
+                    chat_id,
+                    photo,
+                    caption=caption,
+                    parse_mode="HTML",
+                    reply_markup=home_markup()
+                )
+        else:
+            # Repli sur l'URL GitHub si welcome.jpg n'est pas présent.
+            bot.send_photo(
+                chat_id,
+                MENU_IMAGE_URL,
+                caption=caption,
+                parse_mode="HTML",
+                reply_markup=home_markup()
+            )
     except Exception:
-        bot.send_message(chat_id, caption, parse_mode="HTML", reply_markup=home_markup())
+        log.exception("Impossible d'envoyer l'image d'accueil")
+        bot.send_message(
+            chat_id,
+            caption + "\n\n(Image d'accueil indisponible : vérifiez welcome.jpg et les journaux.)",
+            parse_mode="HTML",
+            reply_markup=home_markup()
+        )
 
 
 def _ask(chat_id, prompt, handler, *args):
@@ -134,7 +170,7 @@ def protocol_menu(c):
     if not is_admin(c.from_user.id): return
     _answer(c, "📡 Ouverture...")
     proto = c.data.split("_", 1)[1]
-    _show(c, f"<b>📡 MODULE {proto.upper()}</b>\n\nChoisissez une action :", protocol_markup(proto))
+    _show(c, f"🛠️ <b>MODULE {proto.upper()}</b>\n\n👇 Choisissez une action :", protocol_markup(proto))
 
 
 # SSH
