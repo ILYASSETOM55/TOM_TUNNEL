@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.WARNING, format='%(asctime)s %(levelname)s %(m
 
 CONFIG_FILE = '/etc/tom_tunnel_bot/config.json'
 
-MENU_IMAGE_URL = "https://github.com/user-attachments/assets/baf681b1-820a-428d-85cf-703c25ff498b"
+MENU_IMAGE_URL = "https://github.com/user-attachments/assets/e91b478a-b526-4537-a47d-f1bf2268d9d4"
 
 def load_config():
     if not os.path.exists(CONFIG_FILE): return None
@@ -24,7 +24,7 @@ if not config: exit(1)
 
 def sync_to_web_panel(username, password, protocol, duration, created_by="telegram_bot"):
     try:
-        db_path = "/etc/nexus-tunnel-web/nexus.db"
+        db_path = "/etc/tom-tunnel-web/tom.db"
         if not os.path.exists(db_path): return
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
@@ -53,9 +53,9 @@ def main_menu_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
         InlineKeyboardButton("🔑 SSH/WS", callback_data="menu_ssh"),
-        InlineKeyboardButton("🔰 VMESS", callback_data="menu_vmess"),
-        InlineKeyboardButton("🔰 VLESS", callback_data="menu_vless"),
-        InlineKeyboardButton("🔰 TROJAN", callback_data="menu_trojan"),
+        InlineKeyboardButton("🛡️ VMESS", callback_data="menu_vmess"),
+        InlineKeyboardButton("⚔️ VLESS", callback_data="menu_vless"),
+        InlineKeyboardButton("🔌 TROJAN", callback_data="menu_trojan"),
         InlineKeyboardButton("🔌 SOCKS", callback_data="menu_socks"),
         InlineKeyboardButton("📱 ZIVPN", callback_data="menu_zivpn"),
         InlineKeyboardButton("📊 VPS STATUS", callback_data="menu_status"),
